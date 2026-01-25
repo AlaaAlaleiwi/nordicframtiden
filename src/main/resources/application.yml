@@ -10,7 +10,10 @@ server:
     include-message: always
     include-binding-errors: always
     include-stacktrace: never
-
+logging:
+  level:
+    org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
+    
 spring:
   datasource:
     driver-class-name: org.postgresql.Driver

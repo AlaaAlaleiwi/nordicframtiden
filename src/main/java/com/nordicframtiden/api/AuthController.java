@@ -1,5 +1,4 @@
 package com.nordicframtiden.api;
- 
 
 import com.nordicframtiden.security.jwt.JwtService;
 import jakarta.validation.constraints.NotBlank;
@@ -7,6 +6,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,10 +18,12 @@ public class AuthController {
 
   private final AuthenticationManager authManager;
   private final JwtService jwtService;
+ private final PasswordEncoder encoder;
 
-  public AuthController(AuthenticationManager authManager, JwtService jwtService) {
+  public AuthController(AuthenticationManager authManager, JwtService jwtService, PasswordEncoder encoder) {
     this.authManager = authManager;
     this.jwtService = jwtService;
+    this.encoder = encoder;
   }
 
   record LoginRequest(@NotBlank String username, @NotBlank String password) {}
@@ -29,6 +31,7 @@ public class AuthController {
 
   @PostMapping("/login")
   public TokenResponse login(@RequestBody LoginRequest req) {
+
     Authentication auth = authManager.authenticate(
         new UsernamePasswordAuthenticationToken(req.username(), req.password())
     );
