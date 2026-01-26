@@ -60,42 +60,47 @@ public class AdminService {
      CREATE (password generated)
      ========================= */
   @Transactional
-  public AdminRow createAdminWithProfile(
-      String username,
-      boolean enabled,
-      String fullName,
-      String email,
-      String phone
-  ) {
+public AdminRow createAdminWithProfile(
+    boolean enabled,
+    String fullName,
+    String email,
+    String phone
+) {
 
-    if (repo.existsByUsername(username)) throw new IllegalArgumentException("Username already exists");
-    if (adminProfileRepo.existsByEmail(email)) throw new IllegalArgumentException("Email already exists");
-    if (adminProfileRepo.existsByPhone(phone)) throw new IllegalArgumentException("Phone already exists");
+  if (adminProfileRepo.existsByEmail(email))
+    throw new IllegalArgumentException("Email already exists");
 
-    // ✅ generate password in backend
-    String rawPassword = generatePassword();
+  if (adminProfileRepo.existsByPhone(phone))
+    throw new IllegalArgumentException("Phone already exists");
 
-    // 1) create login user
-    AppUser u = new AppUser();
-    u.setUsername(username);
-    u.setPasswordHash(encoder.encode(rawPassword));
-    u.setEnabled(enabled);
-    u.setRoles(Set.of(Role.ADMIN));
-    u = repo.save(u);
+  // 1️⃣ Generate username
+  String username = generateUniqueUsername(fullName);
 
-    // 2) create admin profile
-    AdminProfile profile = new AdminProfile();
-    profile.setFullName(fullName);
-    profile.setEmail(email);
-    profile.setPhone(phone);
-    profile.setUser(u);
-    adminProfileRepo.save(profile);
+  // 2️⃣ Create login user
+  AppUser user = new AppUser();
+  user.setUsername(username);
+  user.setPasswordHash(encoder.encode(generatePassword()));
+  user.setEnabled(enabled);
+  user.setRoles(Set.of(Role.ADMIN));
+  user = repo.save(user);
 
-    // TODO: send email with rawPassword (use JavaMailSender)
-    // emailService.sendNewAdminPassword(email, username, rawPassword);
+  // 3️⃣ Create admin profile
+  AdminProfile profile = new AdminProfile();
+  profile.setFullName(fullName);
+  profile.setEmail(email);
+  profile.setPhone(phone);
+  profile.setUser(user);
+  adminProfileRepo.save(profile);
 
-    return new AdminRow(u.getId(), u.getUsername(), u.isEnabled(), fullName, email, phone);
-  }
+  return new AdminRow(
+      user.getId(),
+      user.getUsername(),
+      user.isEnabled(),
+      profile.getFullName(),
+      profile.getEmail(),
+      profile.getPhone()
+  );
+}
 
   /* =========================
      UPDATE (profile + username + enabled)
@@ -180,4 +185,31 @@ public class AdminService {
     RAND.nextBytes(bytes);
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
   }
+
+  private String generateUniqueUsername(String fullName) {
+
+  // Normalize accents: Å → A, é → e
+  String base = java.text.Normalizer.normalize(fullName, java.text.Normalizer.Form.NFD)
+      .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+      .toLowerCase()
+      .replaceAll("[^a-z ]", "")
+      .trim()
+      .replaceAll("\\s+", ".");
+
+  // Use first + last name if possible
+  String[] parts = base.split("\\.");
+  if (parts.length >= 2) {
+    base = parts[0] + "." + parts[parts.length - 1];
+  }
+
+  String username = base;
+  int counter = 1;
+
+  while (repo.existsByUsername(username)) {
+    counter++;
+    username = base + counter;
+  }
+
+  return username;
+}
 }
