@@ -23,18 +23,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   }
 
   @Override
-protected void doFilterInternal(HttpServletRequest request,
-                                HttpServletResponse response,
-                                FilterChain chain)
-    throws ServletException, IOException {
+protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+    throws IOException, ServletException {
 
   String token = null;
 
   if (request.getCookies() != null) {
-    for (Cookie cookie : request.getCookies()) {
-      if ("accessToken".equals(cookie.getName())) {
-        token = cookie.getValue();
-        break;
+    for (Cookie c : request.getCookies()) {
+      if ("ACCESS_TOKEN".equals(c.getName())) {
+        token = c.getValue();
       }
     }
   }
@@ -44,29 +41,19 @@ protected void doFilterInternal(HttpServletRequest request,
     return;
   }
 
-  try {
-    Claims claims = jwtService.parse(token).getBody();
-    String username = claims.getSubject();
+  Claims claims = jwtService.parse(token).getBody();
+  String username = claims.getSubject();
 
-    if (username != null &&
-        SecurityContextHolder.getContext().getAuthentication() == null) {
+  @SuppressWarnings("unchecked")
+  List<String> roles = (List<String>) claims.get("roles");
 
-      @SuppressWarnings("unchecked")
-      List<String> roles = (List<String>) claims.get("roles");
+  var auth = new UsernamePasswordAuthenticationToken(
+      username,
+      null,
+      roles.stream().map(SimpleGrantedAuthority::new).toList()
+  );
 
-      var authorities = roles == null
-          ? List.<SimpleGrantedAuthority>of()
-          : roles.stream().map(SimpleGrantedAuthority::new).toList();
-
-      var auth = new UsernamePasswordAuthenticationToken(
-          username, null, authorities);
-
-      SecurityContextHolder.getContext().setAuthentication(auth);
-    }
-  } catch (Exception ignored) {
-    // Invalid / expired token → user treated as unauthenticated
-  }
-
+  SecurityContextHolder.getContext().setAuthentication(auth);
   chain.doFilter(request, response);
 }
 }
