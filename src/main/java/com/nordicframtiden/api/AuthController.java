@@ -1,31 +1,22 @@
 package com.nordicframtiden.api;
 
 import com.nordicframtiden.security.jwt.JwtService;
-import jakarta.validation.constraints.NotBlank;
+import io.jsonwebtoken.Claims;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-
-import org.springframework.http.HttpHeaders;
-import java.util.List;
-import java.util.Map;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseCookie;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import io.jsonwebtoken.Claims;
 
 @RestController
 @RequestMapping("/auth")
@@ -33,110 +24,122 @@ public class AuthController {
 
   private final AuthenticationManager authManager;
   private final JwtService jwtService;
-  private final PasswordEncoder encoder;
 
-  public AuthController(AuthenticationManager authManager, JwtService jwtService, PasswordEncoder encoder) {
+  public AuthController(AuthenticationManager authManager, JwtService jwtService) {
     this.authManager = authManager;
     this.jwtService = jwtService;
-    this.encoder = encoder;
   }
 
-  record LoginRequest(@NotBlank String username, @NotBlank String password) {
-  }
+  record LoginRequest(String username, String password) {}
+  record MeResponse(String username, List<String> roles) {}
 
-  record TokenResponse(String accessToken) {
-  }
-
+  /* ---------- LOGIN ---------- */
   @PostMapping("/login")
-  public ResponseEntity<?> login(@RequestBody LoginRequest req) {
-
+  public ResponseEntity<?> login(
+      @RequestBody LoginRequest req,
+      HttpServletResponse response
+  ) {
     Authentication auth = authManager.authenticate(
-        new UsernamePasswordAuthenticationToken(req.username(), req.password()));
+        new UsernamePasswordAuthenticationToken(req.username(), req.password())
+    );
+
+    List<String> roles = auth.getAuthorities().stream()
+        .map(GrantedAuthority::getAuthority)
+        .toList();
 
     String accessToken = jwtService.generateAccessToken(
         auth.getName(),
-        Map.of("roles", auth.getAuthorities().stream()
-            .map(GrantedAuthority::getAuthority)
-            .toList()));
+        Map.of("roles", roles)
+    );
 
     String refreshToken = jwtService.generateRefreshToken(auth.getName());
 
-    ResponseCookie accessCookie = ResponseCookie.from("accessToken", accessToken)
+    ResponseCookie accessCookie = ResponseCookie.from("ACCESS_TOKEN", accessToken)
         .httpOnly(true)
-        .secure(false) // true in prod
-        .sameSite("Lax")
+        .secure(true)
+        .sameSite("Strict")
         .path("/")
         .maxAge(Duration.ofMinutes(15))
         .build();
 
-    ResponseCookie refreshCookie = ResponseCookie.from("refreshToken", refreshToken)
+    ResponseCookie refreshCookie = ResponseCookie.from("REFRESH_TOKEN", refreshToken)
         .httpOnly(true)
-        .secure(false)
-        .sameSite("Lax")
+        .secure(true)
+        .sameSite("Strict")
         .path("/auth/refresh")
-        .maxAge(Duration.ofDays(30))
+        .maxAge(Duration.ofDays(7))
         .build();
 
-    return ResponseEntity.ok()
-        .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
-        .header(HttpHeaders.SET_COOKIE, refreshCookie.toString())
-        .body(Map.of("ok", true));
+    response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
+    response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
+
+    return ResponseEntity.ok().build();
   }
 
-  @PostMapping("/logout")
-  public ResponseEntity<?> logout() {
+  /* ---------- ME ---------- */
+  @GetMapping("/me")
+  public ResponseEntity<MeResponse> me(Authentication auth) {
+    List<String> roles = auth.getAuthorities().stream()
+        .map(GrantedAuthority::getAuthority)
+        .toList();
 
-    ResponseCookie clearAccess = ResponseCookie.from("accessToken", "")
-        .path("/")
-        .maxAge(0)
-        .build();
-
-    ResponseCookie clearRefresh = ResponseCookie.from("refreshToken", "")
-        .path("/auth/refresh")
-        .maxAge(0)
-        .build();
-
-    return ResponseEntity.ok()
-        .header(HttpHeaders.SET_COOKIE, clearAccess.toString())
-        .header(HttpHeaders.SET_COOKIE, clearRefresh.toString())
-        .build();
+    return ResponseEntity.ok(new MeResponse(auth.getName(), roles));
   }
 
+  /* ---------- REFRESH ---------- */
   @PostMapping("/refresh")
-  public ResponseEntity<?> refresh(HttpServletRequest request) {
+  public ResponseEntity<?> refresh(
+      HttpServletRequest request,
+      HttpServletResponse response
+  ) {
+    Cookie[] cookies = request.getCookies();
+    if (cookies == null) return ResponseEntity.status(401).build();
 
     String refreshToken = null;
-
-    if (request.getCookies() != null) {
-      for (Cookie c : request.getCookies()) {
-        if ("refreshToken".equals(c.getName())) {
-          refreshToken = c.getValue();
-          break;
-        }
+    for (Cookie c : cookies) {
+      if ("REFRESH_TOKEN".equals(c.getName())) {
+        refreshToken = c.getValue();
       }
     }
 
-    if (refreshToken == null) {
-      return ResponseEntity.status(401).build();
-    }
+    if (refreshToken == null) return ResponseEntity.status(401).build();
 
     Claims claims = jwtService.parse(refreshToken).getBody();
     String username = claims.getSubject();
 
-    String newAccessToken = jwtService.generateAccessToken(
+    String newAccess = jwtService.generateAccessToken(
         username,
-        Map.of("roles", claims.get("roles", List.class)));
+        Map.of("roles", claims.get("roles"))
+    );
 
-    ResponseCookie accessCookie = ResponseCookie.from("accessToken", newAccessToken)
+    ResponseCookie cookie = ResponseCookie.from("ACCESS_TOKEN", newAccess)
         .httpOnly(true)
-        .secure(false)
-        .sameSite("Lax")
+        .secure(true)
+        .sameSite("Strict")
         .path("/")
         .maxAge(Duration.ofMinutes(15))
         .build();
 
-    return ResponseEntity.ok()
-        .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
-        .body(Map.of("ok", true));
+    response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    return ResponseEntity.ok().build();
+  }
+
+  /* ---------- LOGOUT ---------- */
+  @PostMapping("/logout")
+  public ResponseEntity<?> logout(HttpServletResponse response) {
+    ResponseCookie clearAccess = ResponseCookie.from("ACCESS_TOKEN", "")
+        .path("/")
+        .maxAge(0)
+        .build();
+
+    ResponseCookie clearRefresh = ResponseCookie.from("REFRESH_TOKEN", "")
+        .path("/auth/refresh")
+        .maxAge(0)
+        .build();
+
+    response.addHeader(HttpHeaders.SET_COOKIE, clearAccess.toString());
+    response.addHeader(HttpHeaders.SET_COOKIE, clearRefresh.toString());
+
+    return ResponseEntity.ok().build();
   }
 }
