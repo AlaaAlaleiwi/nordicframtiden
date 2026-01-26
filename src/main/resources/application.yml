@@ -1,8 +1,8 @@
 app:
   jwt:
     secret: ${APP_JWT_SECRET}
-    issuer: "nordicframtiden"
-    accessTokenMinutes: 15
+    accessTokenMinutes: ${APP_JWT_EXPIRES_MIN:60}
+    issuer: ${APP_JWT_ISSUER:nordicframtiden}
 
 server:
   port: 8080
@@ -29,6 +29,8 @@ spring:
       hibernate:
         default_schema: public
     show-sql: true
+
+
 
   flyway:
     enabled: ${SPRING_FLYWAY_ENABLED:true}
