@@ -35,7 +35,7 @@ public class AuthController {
 
   /* ---------- LOGIN ---------- */
   @PostMapping("/login")
-  public ResponseEntity<?> login(
+  public ResponseEntity<Void> login(
       @RequestBody LoginRequest req,
       HttpServletResponse response
   ) {
@@ -52,12 +52,15 @@ public class AuthController {
         Map.of("roles", roles)
     );
 
-    String refreshToken = jwtService.generateRefreshToken(auth.getName());
+    String refreshToken = jwtService.generateRefreshToken(
+        auth.getName(),
+        Map.of("roles", roles)
+    );
 
     ResponseCookie accessCookie = ResponseCookie.from("ACCESS_TOKEN", accessToken)
         .httpOnly(true)
         .secure(true)
-        .sameSite("Strict")
+        .sameSite("None")
         .path("/")
         .maxAge(Duration.ofMinutes(15))
         .build();
@@ -65,7 +68,7 @@ public class AuthController {
     ResponseCookie refreshCookie = ResponseCookie.from("REFRESH_TOKEN", refreshToken)
         .httpOnly(true)
         .secure(true)
-        .sameSite("Strict")
+        .sameSite("None")
         .path("/auth/refresh")
         .maxAge(Duration.ofDays(7))
         .build();
@@ -79,6 +82,10 @@ public class AuthController {
   /* ---------- ME ---------- */
   @GetMapping("/me")
   public ResponseEntity<MeResponse> me(Authentication auth) {
+    if (auth == null) {
+      return ResponseEntity.status(401).build();
+    }
+
     List<String> roles = auth.getAuthorities().stream()
         .map(GrantedAuthority::getAuthority)
         .toList();
@@ -88,7 +95,7 @@ public class AuthController {
 
   /* ---------- REFRESH ---------- */
   @PostMapping("/refresh")
-  public ResponseEntity<?> refresh(
+  public ResponseEntity<Void> refresh(
       HttpServletRequest request,
       HttpServletResponse response
   ) {
@@ -106,33 +113,41 @@ public class AuthController {
 
     Claims claims = jwtService.parse(refreshToken).getBody();
     String username = claims.getSubject();
+    Object roles = claims.get("roles");
 
     String newAccess = jwtService.generateAccessToken(
         username,
-        Map.of("roles", claims.get("roles"))
+        Map.of("roles", roles)
     );
 
-    ResponseCookie cookie = ResponseCookie.from("ACCESS_TOKEN", newAccess)
+    ResponseCookie accessCookie = ResponseCookie.from("ACCESS_TOKEN", newAccess)
         .httpOnly(true)
         .secure(true)
-        .sameSite("Strict")
+        .sameSite("None")
         .path("/")
         .maxAge(Duration.ofMinutes(15))
         .build();
 
-    response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
     return ResponseEntity.ok().build();
   }
 
   /* ---------- LOGOUT ---------- */
   @PostMapping("/logout")
-  public ResponseEntity<?> logout(HttpServletResponse response) {
+  public ResponseEntity<Void> logout(HttpServletResponse response) {
+
     ResponseCookie clearAccess = ResponseCookie.from("ACCESS_TOKEN", "")
+        .httpOnly(true)
+        .secure(true)
+        .sameSite("None")
         .path("/")
         .maxAge(0)
         .build();
 
     ResponseCookie clearRefresh = ResponseCookie.from("REFRESH_TOKEN", "")
+        .httpOnly(true)
+        .secure(true)
+        .sameSite("None")
         .path("/auth/refresh")
         .maxAge(0)
         .build();

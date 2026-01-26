@@ -54,7 +54,7 @@ public class JwtService {
     return parse(token).getBody().getSubject();
   }
 
-  public String generateRefreshToken(String subject) {
+  public String generateRefreshToken(String subject, Map<String, Object> claims) {
     Instant now = Instant.now();
     Instant exp = now.plus(30, ChronoUnit.DAYS);
 
@@ -63,8 +63,13 @@ public class JwtService {
         .setSubject(subject)
         .setIssuedAt(Date.from(now))
         .setExpiration(Date.from(exp))
+        .addClaims(claims)              // ✅ INCLUDE ROLES
         .claim("type", "refresh")
         .signWith(key, SignatureAlgorithm.HS256)
         .compact();
-  }
+}
+public boolean isRefreshToken(String token) {
+    Claims claims = parse(token).getBody();
+    return "refresh".equals(claims.get("type"));
+}
 }

@@ -1,8 +1,11 @@
 package com.nordicframtiden.security.jwt;
 
 import io.jsonwebtoken.Claims;
-import jakarta.servlet.*;
-import jakarta.servlet.http.*;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -23,37 +26,58 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   }
 
   @Override
-protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
-    throws IOException, ServletException {
+  protected void doFilterInternal(
+      HttpServletRequest request,
+      HttpServletResponse response,
+      FilterChain chain
+  ) throws ServletException, IOException {
 
-  String token = null;
+    String token = null;
 
-  if (request.getCookies() != null) {
-    for (Cookie c : request.getCookies()) {
-      if ("ACCESS_TOKEN".equals(c.getName())) {
-        token = c.getValue();
+    // 1️⃣ Authorization header
+    String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+    if (header != null && header.startsWith("Bearer ")) {
+      token = header.substring(7);
+    }
+
+    // 2️⃣ ACCESS_TOKEN cookie
+    if (token == null && request.getCookies() != null) {
+      for (Cookie c : request.getCookies()) {
+        if ("ACCESS_TOKEN".equals(c.getName())) {
+          token = c.getValue();
+          break;
+        }
       }
     }
-  }
 
-  if (token == null) {
+    if (token == null) {
+      chain.doFilter(request, response);
+      return;
+    }
+
+    try {
+      Claims claims = jwtService.parse(token).getBody();
+      String username = claims.getSubject();
+
+      @SuppressWarnings("unchecked")
+      List<String> roles = (List<String>) claims.get("roles");
+
+      var authorities = roles == null
+          ? List.<SimpleGrantedAuthority>of()
+          : roles.stream().map(SimpleGrantedAuthority::new).toList();
+
+      var auth = new UsernamePasswordAuthenticationToken(
+          username,
+          null,
+          authorities
+      );
+
+      SecurityContextHolder.getContext().setAuthentication(auth);
+
+    } catch (Exception ignored) {
+      // invalid / expired token → ignore
+    }
+
     chain.doFilter(request, response);
-    return;
   }
-
-  Claims claims = jwtService.parse(token).getBody();
-  String username = claims.getSubject();
-
-  @SuppressWarnings("unchecked")
-  List<String> roles = (List<String>) claims.get("roles");
-
-  var auth = new UsernamePasswordAuthenticationToken(
-      username,
-      null,
-      roles.stream().map(SimpleGrantedAuthority::new).toList()
-  );
-
-  SecurityContextHolder.getContext().setAuthentication(auth);
-  chain.doFilter(request, response);
-}
 }
