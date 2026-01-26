@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    container_name: nordicframtiden-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Use Aiven DB (remote)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-nordidcframtiden-nordicframtiden.h.aivencloud.com:21542/defaultdb?sslmode=require
+      SPRING_DATASOURCE_USERNAME: avnadmin
+      SPRING_DATASOURCE_PASSWORD: AVNS__6SVGDfEFlW9YSxzCFE
+
+      # JWT (maps to app.jwt.secret if you use ${APP_JWT_SECRET})
+      APP_JWT_SECRET: "CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
+
+      # Flyway
+      SPRING_FLYWAY_ENABLED: "true"
+
+    restart: unless-stopped

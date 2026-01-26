@@ -1,6 +1,6 @@
 app:
   jwt:
-    secret: "CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
+    secret: ${APP_JWT_SECRET}
     issuer: "nordicframtiden"
     accessTokenMinutes: 15
 
@@ -10,26 +10,27 @@ server:
     include-message: always
     include-binding-errors: always
     include-stacktrace: never
+
 logging:
   level:
     org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
-    
+
 spring:
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://pg-nordidcframtiden-nordicframtiden.h.aivencloud.com:21542/defaultdb?sslmode=require
-    username: avnadmin
-    password: AVNS_yMlMTJgRvoVwdBPFLVi
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
 
   jpa:
     hibernate:
       ddl-auto: validate
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         default_schema: public
     show-sql: true
+
   flyway:
-    enabled: true
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
     locations: classpath:db/migration
     baseline-on-migrate: false
