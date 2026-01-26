@@ -20,11 +20,16 @@ import java.util.List;
 public class SecurityConfig {
 
   @Bean
-  SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter) throws Exception {
+  SecurityFilterChain securityFilterChain(HttpSecurity http,
+      JwtAuthenticationFilter jwtFilter) throws Exception {
+
     return http
         .cors(cors -> {
         })
-        .csrf(csrf -> csrf.disable())
+        .csrf(csrf -> csrf
+            .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+            .ignoringRequestMatchers("/auth/**") // login / refresh / logout
+        )
         .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> res.sendError(401)))
         .authorizeHttpRequests(auth -> auth

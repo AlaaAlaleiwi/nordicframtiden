@@ -22,8 +22,7 @@ public class JwtService {
   public JwtService(
       @Value("${app.jwt.secret}") String secret,
       @Value("${app.jwt.issuer}") String issuer,
-      @Value("${app.jwt.accessTokenMinutes}") long accessTokenMinutes
-  ) {
+      @Value("${app.jwt.accessTokenMinutes}") long accessTokenMinutes) {
     this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     this.issuer = issuer;
     this.accessTokenMinutes = accessTokenMinutes;
@@ -53,5 +52,19 @@ public class JwtService {
 
   public String getSubject(String token) {
     return parse(token).getBody().getSubject();
+  }
+
+  public String generateRefreshToken(String subject) {
+    Instant now = Instant.now();
+    Instant exp = now.plus(30, ChronoUnit.DAYS);
+
+    return Jwts.builder()
+        .setIssuer(issuer)
+        .setSubject(subject)
+        .setIssuedAt(Date.from(now))
+        .setExpiration(Date.from(exp))
+        .claim("type", "refresh")
+        .signWith(key, SignatureAlgorithm.HS256)
+        .compact();
   }
 }

@@ -23,33 +23,50 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   }
 
   @Override
-  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
-      throws ServletException, IOException {
+protected void doFilterInternal(HttpServletRequest request,
+                                HttpServletResponse response,
+                                FilterChain chain)
+    throws ServletException, IOException {
 
-    String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-    if (header == null || !header.startsWith("Bearer ")) {
-      chain.doFilter(request, response);
-      return;
-    }
+  String token = null;
 
-    String token = header.substring(7);
-
-    try {
-      Claims claims = jwtService.parse(token).getBody();
-      String username = claims.getSubject();
-
-      if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-        @SuppressWarnings("unchecked")
-        List<String> roles = (List<String>) claims.get("roles", List.class);
-
-        var authorities = roles == null ? List.<SimpleGrantedAuthority>of()
-            : roles.stream().map(SimpleGrantedAuthority::new).toList();
-
-        var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
-        SecurityContextHolder.getContext().setAuthentication(auth);
+  if (request.getCookies() != null) {
+    for (Cookie cookie : request.getCookies()) {
+      if ("accessToken".equals(cookie.getName())) {
+        token = cookie.getValue();
+        break;
       }
-    } catch (Exception ignored) {}
-
-    chain.doFilter(request, response);
+    }
   }
+
+  if (token == null) {
+    chain.doFilter(request, response);
+    return;
+  }
+
+  try {
+    Claims claims = jwtService.parse(token).getBody();
+    String username = claims.getSubject();
+
+    if (username != null &&
+        SecurityContextHolder.getContext().getAuthentication() == null) {
+
+      @SuppressWarnings("unchecked")
+      List<String> roles = (List<String>) claims.get("roles");
+
+      var authorities = roles == null
+          ? List.<SimpleGrantedAuthority>of()
+          : roles.stream().map(SimpleGrantedAuthority::new).toList();
+
+      var auth = new UsernamePasswordAuthenticationToken(
+          username, null, authorities);
+
+      SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+  } catch (Exception ignored) {
+    // Invalid / expired token → user treated as unauthenticated
+  }
+
+  chain.doFilter(request, response);
+}
 }
