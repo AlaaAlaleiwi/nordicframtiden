@@ -1,4 +1,6 @@
-package com.nordicframtiden.security.model;
+package com.nordicframtiden.admin.model;
+
+import com.nordicframtiden.security.model.AppUser;
 
 import jakarta.persistence.*;
 

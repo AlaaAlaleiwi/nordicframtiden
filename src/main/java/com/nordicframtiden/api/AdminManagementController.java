@@ -1,7 +1,7 @@
 package com.nordicframtiden.api;
 
-import com.nordicframtiden.security.model.AppUser;
-import com.nordicframtiden.security.service.AdminService;
+import com.nordicframtiden.admin.*;
+
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.security.access.prepost.PreAuthorize;

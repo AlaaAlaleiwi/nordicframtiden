@@ -1,9 +1,9 @@
-package com.nordicframtiden.security.service;
+package com.nordicframtiden.admin;
 
-import com.nordicframtiden.security.model.AdminProfile;
+import com.nordicframtiden.admin.model.AdminProfile;
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.model.Role;
-import com.nordicframtiden.security.repo.AdminProfileRepository;
+import com.nordicframtiden.admin.model.AdminProfileRepository;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
