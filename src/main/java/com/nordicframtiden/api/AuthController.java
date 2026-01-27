@@ -33,10 +33,13 @@ public class AuthController {
   record LoginRequest(String username, String password) {}
   record MeResponse(String username, List<String> roles) {}
 
-  /* ---------- LOGIN ---------- */
+  /* =========================
+     LOGIN
+     ========================= */
   @PostMapping("/login")
   public ResponseEntity<Void> login(
       @RequestBody LoginRequest req,
+      HttpServletRequest request,
       HttpServletResponse response
   ) {
     Authentication auth = authManager.authenticate(
@@ -48,27 +51,26 @@ public class AuthController {
         .toList();
 
     String accessToken = jwtService.generateAccessToken(
-        auth.getName(),
-        Map.of("roles", roles)
+        auth.getName(), Map.of("roles", roles)
+    );
+    String refreshToken = jwtService.generateRefreshToken(
+        auth.getName(), Map.of("roles", roles)
     );
 
-    String refreshToken = jwtService.generateRefreshToken(
-        auth.getName(),
-        Map.of("roles", roles)
-    );
+    boolean prod = isProd(request);
 
     ResponseCookie accessCookie = ResponseCookie.from("ACCESS_TOKEN", accessToken)
         .httpOnly(true)
-        .secure(true)
-        .sameSite("None")
+        .secure(prod)
+        .sameSite(prod ? "None" : "Lax")
         .path("/")
         .maxAge(Duration.ofMinutes(15))
         .build();
 
     ResponseCookie refreshCookie = ResponseCookie.from("REFRESH_TOKEN", refreshToken)
         .httpOnly(true)
-        .secure(true)
-        .sameSite("None")
+        .secure(prod)
+        .sameSite(prod ? "None" : "Lax")
         .path("/auth/refresh")
         .maxAge(Duration.ofDays(7))
         .build();
@@ -79,7 +81,14 @@ public class AuthController {
     return ResponseEntity.ok().build();
   }
 
-  /* ---------- ME ---------- */
+  private boolean isProd(HttpServletRequest req) {
+    return req.isSecure()
+        || "https".equalsIgnoreCase(req.getHeader("x-forwarded-proto"));
+  }
+
+  /* =========================
+     ME
+     ========================= */
   @GetMapping("/me")
   public ResponseEntity<MeResponse> me(Authentication auth) {
     if (auth == null) {
@@ -93,7 +102,9 @@ public class AuthController {
     return ResponseEntity.ok(new MeResponse(auth.getName(), roles));
   }
 
-  /* ---------- REFRESH ---------- */
+  /* =========================
+     REFRESH
+     ========================= */
   @PostMapping("/refresh")
   public ResponseEntity<Void> refresh(
       HttpServletRequest request,
@@ -106,24 +117,27 @@ public class AuthController {
     for (Cookie c : cookies) {
       if ("REFRESH_TOKEN".equals(c.getName())) {
         refreshToken = c.getValue();
+        break;
       }
     }
 
     if (refreshToken == null) return ResponseEntity.status(401).build();
+    if (!jwtService.isRefreshToken(refreshToken)) return ResponseEntity.status(401).build();
 
     Claims claims = jwtService.parse(refreshToken).getBody();
     String username = claims.getSubject();
     Object roles = claims.get("roles");
 
     String newAccess = jwtService.generateAccessToken(
-        username,
-        Map.of("roles", roles)
+        username, Map.of("roles", roles)
     );
+
+    boolean prod = isProd(request);
 
     ResponseCookie accessCookie = ResponseCookie.from("ACCESS_TOKEN", newAccess)
         .httpOnly(true)
-        .secure(true)
-        .sameSite("None")
+        .secure(prod)
+        .sameSite(prod ? "None" : "Lax")
         .path("/")
         .maxAge(Duration.ofMinutes(15))
         .build();
@@ -132,22 +146,28 @@ public class AuthController {
     return ResponseEntity.ok().build();
   }
 
-  /* ---------- LOGOUT ---------- */
+  /* =========================
+     LOGOUT
+     ========================= */
   @PostMapping("/logout")
-  public ResponseEntity<Void> logout(HttpServletResponse response) {
+  public ResponseEntity<Void> logout(
+      HttpServletRequest request,
+      HttpServletResponse response
+  ) {
+    boolean prod = isProd(request);
 
     ResponseCookie clearAccess = ResponseCookie.from("ACCESS_TOKEN", "")
         .httpOnly(true)
-        .secure(true)
-        .sameSite("None")
+        .secure(prod)
+        .sameSite(prod ? "None" : "Lax")
         .path("/")
         .maxAge(0)
         .build();
 
     ResponseCookie clearRefresh = ResponseCookie.from("REFRESH_TOKEN", "")
         .httpOnly(true)
-        .secure(true)
-        .sameSite("None")
+        .secure(prod)
+        .sameSite(prod ? "None" : "Lax")
         .path("/auth/refresh")
         .maxAge(0)
         .build();
