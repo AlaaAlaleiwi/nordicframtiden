@@ -7,6 +7,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Set;
@@ -30,31 +31,36 @@ public class UserService {
       boolean enabled,
       String fullName,
       String email,
-      String phone
-  ) {}
-
-  public List<UserRow> listDetailedByRole(Role role) {
-    return userRepo.findAllByRole(role).stream().map(u -> {
-      var p = profileRepo.findByUserId(u.getId()).orElse(null);
-      return new UserRow(
-          u.getId(),
-          u.getUsername(),
-          u.isEnabled(),
-          p == null ? null : p.getFullName(),
-          p == null ? null : p.getEmail(),
-          p == null ? null : p.getPhone()
-      );
-    }).toList();
+      String phone,
+      BigDecimal hourlyCost // ✅ NEW
+  ) {
   }
 
+public List<UserRow> listDetailedByRole(Role role) {
+  return userRepo.findAllByRole(role).stream().map(u -> {
+    var p = profileRepo.findByUserId(u.getId()).orElse(null);
+    return new UserRow(
+        u.getId(),
+        u.getUsername(),
+        u.isEnabled(),
+        p == null ? null : p.getFullName(),
+        p == null ? null : p.getEmail(),
+        p == null ? null : p.getPhone(),
+        p == null ? null : p.getHourlyCost() // ✅ NEW
+    );
+  }).toList();
+}
+
   @Transactional
-  public UserRow createWithProfile(Role role, boolean enabled, String fullName, String email, String phone) {
+  public UserRow createWithProfile(Role role, boolean enabled, String fullName, String email, String phone,BigDecimal hourlyCost) {
 
     if (role != Role.USER && role != Role.STAFF) {
       throw new IllegalArgumentException("Only USER or STAFF can be created here");
     }
-    if (profileRepo.existsByEmail(email)) throw new IllegalArgumentException("Email already exists");
-    if (profileRepo.existsByPhone(phone)) throw new IllegalArgumentException("Phone already exists");
+    if (profileRepo.existsByEmail(email))
+      throw new IllegalArgumentException("Email already exists");
+    if (profileRepo.existsByPhone(phone))
+      throw new IllegalArgumentException("Phone already exists");
 
     String username = generateUniqueUsername(fullName);
 
@@ -67,46 +73,66 @@ public class UserService {
     u.setRoles(Set.of(role));
     u = userRepo.save(u);
 
-    UserProfile p = new UserProfile();
-    p.setFullName(fullName);
-    p.setEmail(email);
-    p.setPhone(phone);
-    p.setUser(u);
-    profileRepo.save(p);
+ UserProfile p = new UserProfile();
+  p.setFullName(fullName);
+  p.setEmail(email);
+  p.setPhone(phone);
+  p.setHourlyCost(hourlyCost); // ✅ NEW
+  p.setUser(u);
+  profileRepo.save(p);
 
-    return new UserRow(u.getId(), u.getUsername(), u.isEnabled(), p.getFullName(), p.getEmail(), p.getPhone());
+  return new UserRow(
+      u.getId(), u.getUsername(), u.isEnabled(),
+      p.getFullName(), p.getEmail(), p.getPhone(),
+      p.getHourlyCost() // ✅ NEW
+  );
   }
 
   @Transactional
-  public UserRow updateWithProfile(Long id, String fullName, String email, String phone, Boolean enabled) {
-    AppUser u = userRepo.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
+public UserRow updateWithProfile(
+    Long id,
+    String fullName,
+    String email,
+    String phone,
+    Boolean enabled,
+    BigDecimal hourlyCost // ✅ NEW
+) {
+  AppUser u = userRepo.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-    // Optional: prevent editing admins from this endpoint
-    if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
-      throw new IllegalArgumentException("Cannot edit ADMIN from /api/users");
-    }
-
-    if (enabled != null) u.setEnabled(enabled);
-
-    UserProfile p = profileRepo.findByUserId(id).orElseThrow(() -> new IllegalArgumentException("Profile not found"));
-
-    if (fullName != null && !fullName.isBlank()) p.setFullName(fullName);
-
-    if (email != null && !email.isBlank() && !email.equalsIgnoreCase(p.getEmail())) {
-      if (profileRepo.existsByEmail(email)) throw new IllegalArgumentException("Email already exists");
-      p.setEmail(email);
-    }
-
-    if (phone != null && !phone.isBlank() && !phone.equals(p.getPhone())) {
-      if (profileRepo.existsByPhone(phone)) throw new IllegalArgumentException("Phone already exists");
-      p.setPhone(phone);
-    }
-
-    profileRepo.save(p);
-    userRepo.save(u);
-
-    return new UserRow(u.getId(), u.getUsername(), u.isEnabled(), p.getFullName(), p.getEmail(), p.getPhone());
+  if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
+    throw new IllegalArgumentException("Cannot edit ADMIN from /api/users");
   }
+
+  if (enabled != null) u.setEnabled(enabled);
+
+  UserProfile p = profileRepo.findByUserId(id).orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+
+  if (fullName != null && !fullName.isBlank()) p.setFullName(fullName);
+
+  if (email != null && !email.isBlank() && !email.equalsIgnoreCase(p.getEmail())) {
+    if (profileRepo.existsByEmail(email)) throw new IllegalArgumentException("Email already exists");
+    p.setEmail(email);
+  }
+
+  if (phone != null && !phone.isBlank() && !phone.equals(p.getPhone())) {
+    if (profileRepo.existsByPhone(phone)) throw new IllegalArgumentException("Phone already exists");
+    p.setPhone(phone);
+  }
+
+  // ✅ NEW
+  if (hourlyCost != null) {
+    p.setHourlyCost(hourlyCost);
+  }
+
+  profileRepo.save(p);
+  userRepo.save(u);
+
+  return new UserRow(
+      u.getId(), u.getUsername(), u.isEnabled(),
+      p.getFullName(), p.getEmail(), p.getPhone(),
+      p.getHourlyCost() // ✅ NEW
+  );
+}
 
   @Transactional
   public void deleteUser(Long id) {
@@ -127,7 +153,8 @@ public class UserService {
         .replaceAll("[^a-z0-9]+", ".")
         .replaceAll("^\\.|\\.$", "");
 
-    if (base.isBlank()) base = "user";
+    if (base.isBlank())
+      base = "user";
 
     String candidate = base;
     int i = 1;

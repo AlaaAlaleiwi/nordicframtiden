@@ -1,5 +1,7 @@
 package com.nordicframtiden.security.model;
 
+import java.math.BigDecimal;
+
 import jakarta.persistence.*;
 
 @Entity
@@ -22,7 +24,9 @@ public class UserProfile {
   @OneToOne(optional = false)
   @JoinColumn(name = "user_id", unique = true)
   private AppUser user;
-
+  
+  @Column(name = "hourly_cost", precision = 12, scale = 2)
+  private BigDecimal hourlyCost;
   public Long getId() {
     return id;
   }
@@ -61,6 +65,14 @@ public class UserProfile {
 
   public void setUser(AppUser user) {
     this.user = user;
+  }
+
+  public BigDecimal getHourlyCost() {
+    return hourlyCost;
+  }
+
+  public void setHourlyCost(BigDecimal hourlyCost) {
+    this.hourlyCost = hourlyCost;
   }
 
   

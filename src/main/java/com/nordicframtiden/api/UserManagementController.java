@@ -7,7 +7,9 @@ import jakarta.validation.constraints.NotBlank;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/api/users")
@@ -20,70 +22,75 @@ public class UserManagementController {
     this.userService = userService;
   }
 
-  public record UserResponse(
-      Long id,
-      String username,
-      boolean enabled,
-      String fullName,
-      String email,
-      String phone
-  ) {}
+ public record UserResponse(
+    Long id,
+    String username,
+    boolean enabled,
+    String fullName,
+    String email,
+    String phone,
+    BigDecimal hourlyCost // ✅ NEW
+) {}
 
-  public record CreateUserRequest(
-      @NotBlank String fullName,
-      @NotBlank @Email String email,
-      @NotBlank String phone,
-      Boolean enabled
-  ) {}
+public record CreateUserRequest(
+    @NotBlank String fullName,
+    @NotBlank @Email String email,
+    @NotBlank String phone,
+    Boolean enabled,
+    BigDecimal hourlyCost // ✅ NEW
+) {}
 
-  public record UpdateUserRequest(
-      String fullName,
-      @Email String email,
-      String phone,
-      Boolean enabled
-  ) {}
+public record UpdateUserRequest(
+    String fullName,
+    @Email String email,
+    String phone,
+    Boolean enabled,
+    BigDecimal hourlyCost // ✅ NEW
+) {}
 
   // GET /api/users?role=USER
   @GetMapping
-  public List<UserResponse> list(@RequestParam Role role) {
-    return userService.listDetailedByRole(role).stream()
-        .map(r -> new UserResponse(r.id(), r.username(), r.enabled(), r.fullName(), r.email(), r.phone()))
-        .toList();
-  }
+public List<UserResponse> list(@RequestParam Role role) {
+  return userService.listDetailedByRole(role).stream()
+      .map(r -> new UserResponse(
+          r.id(), r.username(), r.enabled(), r.fullName(), r.email(), r.phone(), r.hourlyCost()
+      ))
+      .toList();
+}
 
-  // POST /api/users?role=USER
-  @PostMapping
-  public UserResponse create(@RequestParam Role role, @RequestBody CreateUserRequest req) {
-    boolean enabled = req.enabled() == null || req.enabled();
+@PostMapping
+public UserResponse create(@RequestParam Role role, @RequestBody CreateUserRequest req) {
+  boolean enabled = req.enabled() == null || req.enabled();
 
-    var created = userService.createWithProfile(
-        role,
-        enabled,
-        req.fullName(),
-        req.email(),
-        req.phone()
-    );
+  var created = userService.createWithProfile(
+      role,
+      enabled,
+      req.fullName(),
+      req.email(),
+      req.phone(),
+      req.hourlyCost() // ✅ NEW
+  );
 
-    return new UserResponse(created.id(), created.username(), created.enabled(), created.fullName(), created.email(), created.phone());
-  }
+  return new UserResponse(
+      created.id(), created.username(), created.enabled(), created.fullName(), created.email(), created.phone(),
+      created.hourlyCost() // ✅ NEW
+  );
+}
 
-  // PUT /api/users/{id}
-  @PutMapping("/{id}")
-  public UserResponse update(@PathVariable Long id, @RequestBody UpdateUserRequest req) {
-    var updated = userService.updateWithProfile(
-        id,
-        req.fullName(),
-        req.email(),
-        req.phone(),
-        req.enabled()
-    );
+@PutMapping("/{id}")
+public UserResponse update(@PathVariable Long id, @RequestBody UpdateUserRequest req) {
+  var updated = userService.updateWithProfile(
+      id,
+      req.fullName(),
+      req.email(),
+      req.phone(),
+      req.enabled(),
+      req.hourlyCost() // ✅ NEW
+  );
 
-    return new UserResponse(updated.id(), updated.username(), updated.enabled(), updated.fullName(), updated.email(), updated.phone());
-  }
-
-  // DELETE /api/users/{id}
-  @DeleteMapping("/{id}")
-  public void delete(@PathVariable Long id) {
-    userService.deleteUser(id);
-  }
+  return new UserResponse(
+      updated.id(), updated.username(), updated.enabled(), updated.fullName(), updated.email(), updated.phone(),
+      updated.hourlyCost() // ✅ NEW
+  );
+}
 }
