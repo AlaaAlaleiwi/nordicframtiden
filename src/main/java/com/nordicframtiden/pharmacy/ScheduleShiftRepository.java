@@ -12,18 +12,16 @@ public interface ScheduleShiftRepository extends JpaRepository<ScheduleShift, Lo
 
     
 
-  @Query("""
-    select s from ScheduleShift s
-    where s.startAt < :end
-      and s.endAt > :start
-      and (:pharmacyId is null or s.pharmacy.id = :pharmacyId)
-      and (:userId is null or s.user.id = :userId)
-    order by s.startAt asc
-  """)
-  List<ScheduleShift> findInRange(
-      @Param("start") OffsetDateTime start,
-      @Param("end") OffsetDateTime end,
-      @Param("pharmacyId") Long pharmacyId,
-      @Param("userId") Long userId
-  );
+@Query("""
+  select s from ScheduleShift s
+  where s.startAt < :end and s.endAt > :start
+    and (:pharmacyId is null or s.pharmacy.id = :pharmacyId)
+    and (:userId is null or s.user.id = :userId)
+""")
+List<ScheduleShift> findInRange(
+  @Param("start") OffsetDateTime start,
+  @Param("end") OffsetDateTime end,
+  @Param("pharmacyId") Long pharmacyId,
+  @Param("userId") Long userId
+);
 }

@@ -22,7 +22,7 @@ public class ScheduleController {
 
   public record EventDto(
       Long id,
-      Long pharmacyId,
+      Long pharmacyId,     // ✅ can be null for STAFF
       Long userId,
       String userLabel,
       OffsetDateTime startAt,
@@ -30,9 +30,10 @@ public class ScheduleController {
       String note
   ) {
     static EventDto from(ScheduleShift s) {
+      Long pid = (s.getPharmacy() == null) ? null : s.getPharmacy().getId();
       return new EventDto(
           s.getId(),
-          s.getPharmacy().getId(),
+          pid,
           s.getUser().getId(),
           "@" + s.getUser().getUsername(),
           s.getStartAt(),
@@ -43,7 +44,7 @@ public class ScheduleController {
   }
 
   public record CreateRequest(
-      @NotNull Long pharmacyId,
+      Long pharmacyId,                 // ✅ NOT required anymore
       @NotNull Long userId,
       @NotNull OffsetDateTime startAt,
       @NotNull OffsetDateTime endAt,
@@ -51,14 +52,13 @@ public class ScheduleController {
   ) {}
 
   public record UpdateRequest(
-      Long pharmacyId,
+      Long pharmacyId,                 // optional
       Long userId,
       OffsetDateTime startAt,
       OffsetDateTime endAt,
       String note
   ) {}
 
-  // ✅ FullCalendar range fetch (month/week/day)
   @GetMapping
   public List<EventDto> list(
       @RequestParam OffsetDateTime start,
@@ -75,7 +75,7 @@ public class ScheduleController {
   @PostMapping
   public EventDto create(@RequestBody CreateRequest req) {
     var created = service.create(
-        req.pharmacyId(),
+        req.pharmacyId(),     // ✅ can be null now
         req.userId(),
         req.startAt(),
         req.endAt(),

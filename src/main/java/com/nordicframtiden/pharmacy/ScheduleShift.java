@@ -14,7 +14,7 @@ public class ScheduleShift {
   private Long id;
 
   @ManyToOne(optional = false, fetch = FetchType.LAZY)
-  @JoinColumn(name = "pharmacy_id", nullable = false)
+  @JoinColumn(name = "pharmacy_id", nullable = true)
   private Pharmacy pharmacy;
 
   @ManyToOne(optional = false, fetch = FetchType.LAZY)
