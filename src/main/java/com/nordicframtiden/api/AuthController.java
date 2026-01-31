@@ -84,25 +84,36 @@ public class AuthController {
         .build();
   }
 
+  // ✅ what frontend expects
+  record LoginResponse(String accessToken, List<String> roles) {}
   @PostMapping("/login")
-  public ResponseEntity<Void> login(@RequestBody LoginRequest req, HttpServletResponse response) {
+  public ResponseEntity<LoginResponse> login(
+      @RequestBody LoginRequest req,
+      HttpServletResponse response
+  ) {
     Authentication auth = authManager.authenticate(
         new UsernamePasswordAuthenticationToken(req.username(), req.password())
     );
 
     List<String> roles = auth.getAuthorities().stream()
-        .map(GrantedAuthority::getAuthority)
+        .map(GrantedAuthority::getAuthority) // e.g. ROLE_ADMIN
         .toList();
 
-    String accessToken = jwtService.generateAccessToken(auth.getName(), Map.of("roles", roles));
-    String refreshToken = jwtService.generateRefreshToken(auth.getName(), Map.of("roles", roles));
+    String accessToken = jwtService.generateAccessToken(
+        auth.getName(), Map.of("roles", roles)
+    );
+    String refreshToken = jwtService.generateRefreshToken(
+        auth.getName(), Map.of("roles", roles)
+    );
 
-    // ✅ Use Partitioned cookie header string
+    // ✅ Optional: keep cookies too (fine for Chrome; Safari may ignore sometimes)
     response.addHeader(HttpHeaders.SET_COOKIE, withPartitioned(accessCookie(accessToken)));
     response.addHeader(HttpHeaders.SET_COOKIE, withPartitioned(refreshCookie(refreshToken)));
 
-    return ResponseEntity.ok().build();
+    // ✅ IMPORTANT: return JSON body for Safari-proof client auth
+    return ResponseEntity.ok(new LoginResponse(accessToken, roles));
   }
+ 
 
   @GetMapping("/me")
   public ResponseEntity<MeResponse> me(Authentication auth) {
