@@ -36,23 +36,44 @@ public class UserService {
   ) {
   }
 
-public List<UserRow> listDetailedByRole(Role role) {
-  return userRepo.findAllByRole(role).stream().map(u -> {
-    var p = profileRepo.findByUserId(u.getId()).orElse(null);
-    return new UserRow(
-        u.getId(),
-        u.getUsername(),
-        u.isEnabled(),
-        p == null ? null : p.getFullName(),
-        p == null ? null : p.getEmail(),
-        p == null ? null : p.getPhone(),
-        p == null ? null : p.getHourlyCost() // ✅ NEW
-    );
-  }).toList();
-}
+  public record DetailedUser(
+      Long id, String username, boolean enabled, String fullName, String email, String phone, BigDecimal hourlyCost) {
+  }
+
+  public DetailedUser getDetailedById(Long id) {
+    return userRepo.findById(id)
+        .map(u -> {
+          var profile = profileRepo.findByUserId(u.getId()).orElse(null);
+          return new DetailedUser(
+              u.getId(),
+              u.getUsername(),
+              u.isEnabled(),
+              profile != null ? profile.getFullName() : u.getUsername(),
+              profile != null ? profile.getEmail() : null,
+              profile != null ? profile.getPhone() : null,
+              profile != null ? profile.getHourlyCost() : null);
+        })
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+  }
+
+  public List<UserRow> listDetailedByRole(Role role) {
+    return userRepo.findAllByRole(role).stream().map(u -> {
+      var p = profileRepo.findByUserId(u.getId()).orElse(null);
+      return new UserRow(
+          u.getId(),
+          u.getUsername(),
+          u.isEnabled(),
+          p == null ? null : p.getFullName(),
+          p == null ? null : p.getEmail(),
+          p == null ? null : p.getPhone(),
+          p == null ? null : p.getHourlyCost() // ✅ NEW
+      );
+    }).toList();
+  }
 
   @Transactional
-  public UserRow createWithProfile(Role role, boolean enabled, String fullName, String email, String phone,BigDecimal hourlyCost) {
+  public UserRow createWithProfile(Role role, boolean enabled, String fullName, String email, String phone,
+      BigDecimal hourlyCost) {
 
     if (role != Role.USER && role != Role.STAFF) {
       throw new IllegalArgumentException("Only USER or STAFF can be created here");
@@ -73,66 +94,70 @@ public List<UserRow> listDetailedByRole(Role role) {
     u.setRoles(Set.of(role));
     u = userRepo.save(u);
 
- UserProfile p = new UserProfile();
-  p.setFullName(fullName);
-  p.setEmail(email);
-  p.setPhone(phone);
-  p.setHourlyCost(hourlyCost); // ✅ NEW
-  p.setUser(u);
-  profileRepo.save(p);
+    UserProfile p = new UserProfile();
+    p.setFullName(fullName);
+    p.setEmail(email);
+    p.setPhone(phone);
+    p.setHourlyCost(hourlyCost); // ✅ NEW
+    p.setUser(u);
+    profileRepo.save(p);
 
-  return new UserRow(
-      u.getId(), u.getUsername(), u.isEnabled(),
-      p.getFullName(), p.getEmail(), p.getPhone(),
-      p.getHourlyCost() // ✅ NEW
-  );
+    return new UserRow(
+        u.getId(), u.getUsername(), u.isEnabled(),
+        p.getFullName(), p.getEmail(), p.getPhone(),
+        p.getHourlyCost() // ✅ NEW
+    );
   }
 
   @Transactional
-public UserRow updateWithProfile(
-    Long id,
-    String fullName,
-    String email,
-    String phone,
-    Boolean enabled,
-    BigDecimal hourlyCost // ✅ NEW
-) {
-  AppUser u = userRepo.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
+  public UserRow updateWithProfile(
+      Long id,
+      String fullName,
+      String email,
+      String phone,
+      Boolean enabled,
+      BigDecimal hourlyCost // ✅ NEW
+  ) {
+    AppUser u = userRepo.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-  if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
-    throw new IllegalArgumentException("Cannot edit ADMIN from /api/users");
+    if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
+      throw new IllegalArgumentException("Cannot edit ADMIN from /api/users");
+    }
+
+    if (enabled != null)
+      u.setEnabled(enabled);
+
+    UserProfile p = profileRepo.findByUserId(id).orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+
+    if (fullName != null && !fullName.isBlank())
+      p.setFullName(fullName);
+
+    if (email != null && !email.isBlank() && !email.equalsIgnoreCase(p.getEmail())) {
+      if (profileRepo.existsByEmail(email))
+        throw new IllegalArgumentException("Email already exists");
+      p.setEmail(email);
+    }
+
+    if (phone != null && !phone.isBlank() && !phone.equals(p.getPhone())) {
+      if (profileRepo.existsByPhone(phone))
+        throw new IllegalArgumentException("Phone already exists");
+      p.setPhone(phone);
+    }
+
+    // ✅ NEW
+    if (hourlyCost != null) {
+      p.setHourlyCost(hourlyCost);
+    }
+
+    profileRepo.save(p);
+    userRepo.save(u);
+
+    return new UserRow(
+        u.getId(), u.getUsername(), u.isEnabled(),
+        p.getFullName(), p.getEmail(), p.getPhone(),
+        p.getHourlyCost() // ✅ NEW
+    );
   }
-
-  if (enabled != null) u.setEnabled(enabled);
-
-  UserProfile p = profileRepo.findByUserId(id).orElseThrow(() -> new IllegalArgumentException("Profile not found"));
-
-  if (fullName != null && !fullName.isBlank()) p.setFullName(fullName);
-
-  if (email != null && !email.isBlank() && !email.equalsIgnoreCase(p.getEmail())) {
-    if (profileRepo.existsByEmail(email)) throw new IllegalArgumentException("Email already exists");
-    p.setEmail(email);
-  }
-
-  if (phone != null && !phone.isBlank() && !phone.equals(p.getPhone())) {
-    if (profileRepo.existsByPhone(phone)) throw new IllegalArgumentException("Phone already exists");
-    p.setPhone(phone);
-  }
-
-  // ✅ NEW
-  if (hourlyCost != null) {
-    p.setHourlyCost(hourlyCost);
-  }
-
-  profileRepo.save(p);
-  userRepo.save(u);
-
-  return new UserRow(
-      u.getId(), u.getUsername(), u.isEnabled(),
-      p.getFullName(), p.getEmail(), p.getPhone(),
-      p.getHourlyCost() // ✅ NEW
-  );
-}
 
   @Transactional
   public void deleteUser(Long id) {

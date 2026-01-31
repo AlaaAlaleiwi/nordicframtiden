@@ -1,21 +1,16 @@
-package com.nordicframtiden.pharmacy;
+ package com.nordicframtiden.company;
 
 import com.nordicframtiden.security.model.AppUser;
 import jakarta.persistence.*;
-
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "schedule_shift")
-public class ScheduleShift {
+@Table(name = "staff_shift")
+public class StaffShift {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
-
-  @ManyToOne(optional = false, fetch = FetchType.LAZY)
-  @JoinColumn(name = "pharmacy_id", nullable = false)
-  private Pharmacy pharmacy;
 
   @ManyToOne(optional = false, fetch = FetchType.LAZY)
   @JoinColumn(name = "user_id", nullable = false)
@@ -27,24 +22,29 @@ public class ScheduleShift {
   @Column(name = "end_at", nullable = false)
   private OffsetDateTime endAt;
 
-  @Column(name = "note", length = 300)
+  @Column(name = "note")
   private String note;
 
   @Column(name = "created_at", nullable = false)
-  private OffsetDateTime createdAt = OffsetDateTime.now();
+  private OffsetDateTime createdAt;
 
   @Column(name = "updated_at", nullable = false)
-  private OffsetDateTime updatedAt = OffsetDateTime.now();
+  private OffsetDateTime updatedAt;
+
+  @PrePersist
+  void prePersist() {
+    var now = OffsetDateTime.now();
+    if (createdAt == null) createdAt = now;
+    if (updatedAt == null) updatedAt = now;
+  }
 
   @PreUpdate
   void preUpdate() {
     updatedAt = OffsetDateTime.now();
   }
 
+  // getters/setters
   public Long getId() { return id; }
-
-  public Pharmacy getPharmacy() { return pharmacy; }
-  public void setPharmacy(Pharmacy pharmacy) { this.pharmacy = pharmacy; }
 
   public AppUser getUser() { return user; }
   public void setUser(AppUser user) { this.user = user; }
@@ -57,7 +57,4 @@ public class ScheduleShift {
 
   public String getNote() { return note; }
   public void setNote(String note) { this.note = note; }
-
-  public OffsetDateTime getCreatedAt() { return createdAt; }
-  public OffsetDateTime getUpdatedAt() { return updatedAt; }
 }

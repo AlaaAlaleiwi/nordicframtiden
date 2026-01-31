@@ -30,26 +30,22 @@ public class ScheduleService {
   }
 
 @Transactional
-public ScheduleShift create(Long pharmacyId, Long userId, OffsetDateTime startAt, OffsetDateTime endAt, String note) {
+public ScheduleShift create(Long pharmacyId, Long userId,
+                            OffsetDateTime startAt, OffsetDateTime endAt, String note) {
   validateRange(startAt, endAt);
+
+  if (pharmacyId == null) {
+    throw new IllegalArgumentException("pharmacyId is required");
+  }
 
   AppUser user = userRepo.findById(userId)
       .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-  Pharmacy pharmacy = null;
-
-  if (pharmacyId != null) {
-    pharmacy = pharmacyRepo.findById(pharmacyId)
-        .orElseThrow(() -> new IllegalArgumentException("Pharmacy not found"));
-  } else {
-    // ✅ pharmacyId is missing/null => allow ONLY if user is STAFF
-    if (user.getRoles() == null || !user.getRoles().contains(com.nordicframtiden.security.model.Role.STAFF)) {
-      throw new IllegalArgumentException("pharmacyId is required for non-STAFF shifts");
-    }
-  }
+  Pharmacy pharmacy = pharmacyRepo.findById(pharmacyId)
+      .orElseThrow(() -> new IllegalArgumentException("Pharmacy not found"));
 
   ScheduleShift s = new ScheduleShift();
-  s.setPharmacy(pharmacy); // ✅ can be null (for staff)
+  s.setPharmacy(pharmacy);   // ✅ never null here
   s.setUser(user);
   s.setStartAt(startAt);
   s.setEndAt(endAt);
@@ -57,7 +53,6 @@ public ScheduleShift create(Long pharmacyId, Long userId, OffsetDateTime startAt
 
   return shiftRepo.save(s);
 }
-
   @Transactional
   public ScheduleShift update(Long id,
                               Long pharmacyId,

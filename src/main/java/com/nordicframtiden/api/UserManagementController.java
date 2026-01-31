@@ -47,7 +47,11 @@ public record UpdateUserRequest(
     Boolean enabled,
     BigDecimal hourlyCost // ✅ NEW
 ) {}
-
+@GetMapping("/{id}")
+public UserResponse getOne(@PathVariable Long id) {
+  var r = userService.getDetailedById(id); // you implement this in service (see below)
+  return new UserResponse(r.id(), r.username(), r.enabled(), r.fullName(), r.email(), r.phone(), r.hourlyCost());
+}
   // GET /api/users?role=USER
   @GetMapping
 public List<UserResponse> list(@RequestParam Role role) {
