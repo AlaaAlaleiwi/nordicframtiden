@@ -33,11 +33,16 @@ public class AuthController {
   record LoginRequest(String username, String password) {}
   record MeResponse(String username, List<String> roles) {}
 
-  // ✅ One place for cookie settings
-  private static final String SAME_SITE = "None"; // ✅ cross-site required
-  private static final boolean SECURE = true;     // ✅ must be true on https
+  private static final String SAME_SITE = "None";
+  private static final boolean SECURE = true;
   private static final Duration ACCESS_TTL = Duration.ofMinutes(15);
   private static final Duration REFRESH_TTL = Duration.ofDays(7);
+
+  // ✅ Append Partitioned for Safari / third-party cookie reliability
+  private static String withPartitioned(ResponseCookie c) {
+    // Partitioned cookies REQUIRE Secure + SameSite=None
+    return c.toString() + "; Partitioned";
+  }
 
   private ResponseCookie accessCookie(String token) {
     return ResponseCookie.from("ACCESS_TOKEN", token)
@@ -79,14 +84,8 @@ public class AuthController {
         .build();
   }
 
-  /* =========================
-     LOGIN
-     ========================= */
   @PostMapping("/login")
-  public ResponseEntity<Void> login(
-      @RequestBody LoginRequest req,
-      HttpServletResponse response
-  ) {
+  public ResponseEntity<Void> login(@RequestBody LoginRequest req, HttpServletResponse response) {
     Authentication auth = authManager.authenticate(
         new UsernamePasswordAuthenticationToken(req.username(), req.password())
     );
@@ -95,22 +94,16 @@ public class AuthController {
         .map(GrantedAuthority::getAuthority)
         .toList();
 
-    String accessToken = jwtService.generateAccessToken(
-        auth.getName(), Map.of("roles", roles)
-    );
-    String refreshToken = jwtService.generateRefreshToken(
-        auth.getName(), Map.of("roles", roles)
-    );
+    String accessToken = jwtService.generateAccessToken(auth.getName(), Map.of("roles", roles));
+    String refreshToken = jwtService.generateRefreshToken(auth.getName(), Map.of("roles", roles));
 
-    response.addHeader(HttpHeaders.SET_COOKIE, accessCookie(accessToken).toString());
-    response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie(refreshToken).toString());
+    // ✅ Use Partitioned cookie header string
+    response.addHeader(HttpHeaders.SET_COOKIE, withPartitioned(accessCookie(accessToken)));
+    response.addHeader(HttpHeaders.SET_COOKIE, withPartitioned(refreshCookie(refreshToken)));
 
     return ResponseEntity.ok().build();
   }
 
-  /* =========================
-     ME
-     ========================= */
   @GetMapping("/me")
   public ResponseEntity<MeResponse> me(Authentication auth) {
     if (auth == null) return ResponseEntity.status(401).build();
@@ -122,14 +115,8 @@ public class AuthController {
     return ResponseEntity.ok(new MeResponse(auth.getName(), roles));
   }
 
-  /* =========================
-     REFRESH
-     ========================= */
   @PostMapping("/refresh")
-  public ResponseEntity<Void> refresh(
-      HttpServletRequest request,
-      HttpServletResponse response
-  ) {
+  public ResponseEntity<Void> refresh(HttpServletRequest request, HttpServletResponse response) {
     Cookie[] cookies = request.getCookies();
     if (cookies == null) return ResponseEntity.status(401).build();
 
@@ -148,21 +135,16 @@ public class AuthController {
     String username = claims.getSubject();
     Object roles = claims.get("roles");
 
-    String newAccess = jwtService.generateAccessToken(
-        username, Map.of("roles", roles)
-    );
+    String newAccess = jwtService.generateAccessToken(username, Map.of("roles", roles));
 
-    response.addHeader(HttpHeaders.SET_COOKIE, accessCookie(newAccess).toString());
+    response.addHeader(HttpHeaders.SET_COOKIE, withPartitioned(accessCookie(newAccess)));
     return ResponseEntity.ok().build();
   }
 
-  /* =========================
-     LOGOUT
-     ========================= */
   @PostMapping("/logout")
   public ResponseEntity<Void> logout(HttpServletResponse response) {
-    response.addHeader(HttpHeaders.SET_COOKIE, clearAccessCookie().toString());
-    response.addHeader(HttpHeaders.SET_COOKIE, clearRefreshCookie().toString());
+    response.addHeader(HttpHeaders.SET_COOKIE, withPartitioned(clearAccessCookie()));
+    response.addHeader(HttpHeaders.SET_COOKIE, withPartitioned(clearRefreshCookie()));
     return ResponseEntity.ok().build();
   }
 }
