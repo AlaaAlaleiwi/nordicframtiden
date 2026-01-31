@@ -12,7 +12,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 
 import java.util.List;
 
@@ -22,54 +21,56 @@ public class SecurityConfig {
 
   @Bean
   SecurityFilterChain securityFilterChain(HttpSecurity http,
-      JwtAuthenticationFilter jwtFilter) throws Exception {
+                                          JwtAuthenticationFilter jwtFilter) throws Exception {
 
     return http
-        .cors(cors -> {})
-        .csrf(csrf -> csrf.disable()) // 🔥 FIX
+        // ✅ IMPORTANT: wire Spring CORS using the bean below
+        .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+        .csrf(csrf -> csrf.disable())
         .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> res.sendError(401)))
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
             .requestMatchers("/auth/**").permitAll()
             .requestMatchers("/api/admins/**").hasRole("ADMIN")
-            .requestMatchers("/api/admins/**").hasRole("ADMIN")
-            .requestMatchers("/api/schedules/**").hasAnyRole("ADMIN", "STAFF")
-            .anyRequest().authenticated())
+            .requestMatchers("/api/schedules/**").hasAnyRole("ADMIN","STAFF")
+            .requestMatchers("/api/staff-schedules/**").hasAnyRole("ADMIN","STAFF")
+            .anyRequest().authenticated()
+        )
         .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
   }
 
-@Bean
-CorsConfigurationSource corsConfigurationSource() {
-  CorsConfiguration config = new CorsConfiguration();
+  @Bean
+  CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration config = new CorsConfiguration();
 
-  config.setAllowedOrigins(List.of(
-      "http://localhost:5173",
-      "https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com"
-  ));
+    // ✅ must be exact origins, no "*"
+    config.setAllowedOrigins(List.of(
+        "http://localhost:5173",
+        "https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com"
+    ));
 
-  config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 
-  // ✅ explicitly allow headers that browser complains about
-  config.setAllowedHeaders(List.of(
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-      "Origin",
-      "Cache-Control",
-      "Pragma"
-  ));
+    // ✅ include headers your axios sends + common ones
+    config.setAllowedHeaders(List.of(
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "X-XSRF-TOKEN",
+        "Cache-Control",
+        "Pragma"
+    ));
 
-  // ✅ if you need cookies
-  config.setAllowCredentials(true);
+    // ✅ allow cookies
+    config.setAllowCredentials(true);
 
-  // ✅ important so browser can read Set-Cookie (optional but good)
-  config.setExposedHeaders(List.of("Set-Cookie"));
+    // optional (not required for cookies to work, but fine)
+    config.setExposedHeaders(List.of("Set-Cookie"));
 
-  UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-  source.registerCorsConfiguration("/**", config);
-  return source;
-}
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", config);
+    return source;
+  }
 }
