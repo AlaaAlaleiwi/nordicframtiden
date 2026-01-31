@@ -42,7 +42,7 @@ SecurityFilterChain securityFilterChain(HttpSecurity http,
   @Bean
   CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration config = new CorsConfiguration();
-    config.setAllowedOrigins(List.of("http://localhost:5173", "https://nordicframtiden.onrender.com"));
+    config.setAllowedOrigins(List.of("http://localhost:5173", "https://nordicframtiden.onrender.com","https://nordicframtiden-backend-9d19d3d72d73.herokuapp.com"));
     config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
     config.setAllowedHeaders(List.of("*"));
     config.setAllowCredentials(true);
