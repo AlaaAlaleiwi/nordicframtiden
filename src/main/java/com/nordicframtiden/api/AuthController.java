@@ -33,13 +33,58 @@ public class AuthController {
   record LoginRequest(String username, String password) {}
   record MeResponse(String username, List<String> roles) {}
 
+  // ✅ One place for cookie settings
+  private static final String SAME_SITE = "None"; // ✅ cross-site required
+  private static final boolean SECURE = true;     // ✅ must be true on https
+  private static final Duration ACCESS_TTL = Duration.ofMinutes(15);
+  private static final Duration REFRESH_TTL = Duration.ofDays(7);
+
+  private ResponseCookie accessCookie(String token) {
+    return ResponseCookie.from("ACCESS_TOKEN", token)
+        .httpOnly(true)
+        .secure(SECURE)
+        .sameSite(SAME_SITE)
+        .path("/")
+        .maxAge(ACCESS_TTL)
+        .build();
+  }
+
+  private ResponseCookie refreshCookie(String token) {
+    return ResponseCookie.from("REFRESH_TOKEN", token)
+        .httpOnly(true)
+        .secure(SECURE)
+        .sameSite(SAME_SITE)
+        .path("/auth/refresh")
+        .maxAge(REFRESH_TTL)
+        .build();
+  }
+
+  private ResponseCookie clearAccessCookie() {
+    return ResponseCookie.from("ACCESS_TOKEN", "")
+        .httpOnly(true)
+        .secure(SECURE)
+        .sameSite(SAME_SITE)
+        .path("/")
+        .maxAge(0)
+        .build();
+  }
+
+  private ResponseCookie clearRefreshCookie() {
+    return ResponseCookie.from("REFRESH_TOKEN", "")
+        .httpOnly(true)
+        .secure(SECURE)
+        .sameSite(SAME_SITE)
+        .path("/auth/refresh")
+        .maxAge(0)
+        .build();
+  }
+
   /* =========================
      LOGIN
      ========================= */
   @PostMapping("/login")
   public ResponseEntity<Void> login(
       @RequestBody LoginRequest req,
-      HttpServletRequest request,
       HttpServletResponse response
   ) {
     Authentication auth = authManager.authenticate(
@@ -57,33 +102,10 @@ public class AuthController {
         auth.getName(), Map.of("roles", roles)
     );
 
-    boolean prod = isProd(request);
-
-    ResponseCookie accessCookie = ResponseCookie.from("ACCESS_TOKEN", accessToken)
-        .httpOnly(true)
-        .secure(prod)
-        .sameSite(prod ? "None" : "Lax")
-        .path("/")
-        .maxAge(Duration.ofMinutes(15))
-        .build();
-
-    ResponseCookie refreshCookie = ResponseCookie.from("REFRESH_TOKEN", refreshToken)
-        .httpOnly(true)
-        .secure(prod)
-        .sameSite(prod ? "None" : "Lax")
-        .path("/auth/refresh")
-        .maxAge(Duration.ofDays(7))
-        .build();
-
-    response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
-    response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
+    response.addHeader(HttpHeaders.SET_COOKIE, accessCookie(accessToken).toString());
+    response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie(refreshToken).toString());
 
     return ResponseEntity.ok().build();
-  }
-
-  private boolean isProd(HttpServletRequest req) {
-    return req.isSecure()
-        || "https".equalsIgnoreCase(req.getHeader("x-forwarded-proto"));
   }
 
   /* =========================
@@ -91,16 +113,13 @@ public class AuthController {
      ========================= */
   @GetMapping("/me")
   public ResponseEntity<MeResponse> me(Authentication auth) {
-    if (auth == null) {
-      return ResponseEntity.status(401).build();
-    }
+    if (auth == null) return ResponseEntity.status(401).build();
 
     List<String> roles = auth.getAuthorities().stream()
         .map(GrantedAuthority::getAuthority)
         .toList();
-    var meResponse = new MeResponse(auth.getName(), roles);
-    System.out.println(meResponse);
-    return ResponseEntity.ok(meResponse);
+
+    return ResponseEntity.ok(new MeResponse(auth.getName(), roles));
   }
 
   /* =========================
@@ -133,17 +152,7 @@ public class AuthController {
         username, Map.of("roles", roles)
     );
 
-    boolean prod = isProd(request);
-
-    ResponseCookie accessCookie = ResponseCookie.from("ACCESS_TOKEN", newAccess)
-        .httpOnly(true)
-        .secure(prod)
-        .sameSite(prod ? "None" : "Lax")
-        .path("/")
-        .maxAge(Duration.ofMinutes(15))
-        .build();
-
-    response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
+    response.addHeader(HttpHeaders.SET_COOKIE, accessCookie(newAccess).toString());
     return ResponseEntity.ok().build();
   }
 
@@ -151,31 +160,9 @@ public class AuthController {
      LOGOUT
      ========================= */
   @PostMapping("/logout")
-  public ResponseEntity<Void> logout(
-      HttpServletRequest request,
-      HttpServletResponse response
-  ) {
-    boolean prod = isProd(request);
-
-    ResponseCookie clearAccess = ResponseCookie.from("ACCESS_TOKEN", "")
-        .httpOnly(true)
-        .secure(prod)
-        .sameSite(prod ? "None" : "Lax")
-        .path("/")
-        .maxAge(0)
-        .build();
-
-    ResponseCookie clearRefresh = ResponseCookie.from("REFRESH_TOKEN", "")
-        .httpOnly(true)
-        .secure(prod)
-        .sameSite(prod ? "None" : "Lax")
-        .path("/auth/refresh")
-        .maxAge(0)
-        .build();
-
-    response.addHeader(HttpHeaders.SET_COOKIE, clearAccess.toString());
-    response.addHeader(HttpHeaders.SET_COOKIE, clearRefresh.toString());
-
+  public ResponseEntity<Void> logout(HttpServletResponse response) {
+    response.addHeader(HttpHeaders.SET_COOKIE, clearAccessCookie().toString());
+    response.addHeader(HttpHeaders.SET_COOKIE, clearRefreshCookie().toString());
     return ResponseEntity.ok().build();
   }
 }
