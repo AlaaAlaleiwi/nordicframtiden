@@ -98,8 +98,9 @@ public class AuthController {
     List<String> roles = auth.getAuthorities().stream()
         .map(GrantedAuthority::getAuthority)
         .toList();
-
-    return ResponseEntity.ok(new MeResponse(auth.getName(), roles));
+    var meResponse = new MeResponse(auth.getName(), roles);
+    System.out.println(meResponse);
+    return ResponseEntity.ok(meResponse);
   }
 
   /* =========================
