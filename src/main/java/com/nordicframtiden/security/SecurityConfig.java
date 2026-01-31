@@ -21,30 +21,40 @@ import java.util.List;
 public class SecurityConfig {
 
   @Bean
-SecurityFilterChain securityFilterChain(HttpSecurity http,
-    JwtAuthenticationFilter jwtFilter) throws Exception {
+  SecurityFilterChain securityFilterChain(HttpSecurity http,
+      JwtAuthenticationFilter jwtFilter) throws Exception {
 
-  return http
-      .cors(cors -> {})
-      .csrf(csrf -> csrf.disable()) // 🔥 FIX
-      .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-      .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> res.sendError(401)))
-      .authorizeHttpRequests(auth -> auth
-          .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-          .requestMatchers("/auth/**").permitAll()
-          .requestMatchers("/api/admins/**").hasRole("ADMIN")
-          .requestMatchers("/api/admins/**").hasRole("ADMIN")
-          .requestMatchers("/api/schedules/**").hasAnyRole("ADMIN","STAFF")
-          .anyRequest().authenticated())
-      .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-      .build();
-}
+    return http
+        .cors(cors -> {})
+        .csrf(csrf -> csrf.disable()) // 🔥 FIX
+        .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> res.sendError(401)))
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+            .requestMatchers("/auth/**").permitAll()
+            .requestMatchers("/api/admins/**").hasRole("ADMIN")
+            .requestMatchers("/api/admins/**").hasRole("ADMIN")
+            .requestMatchers("/api/schedules/**").hasAnyRole("ADMIN", "STAFF")
+            .anyRequest().authenticated())
+        .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+        .build();
+  }
+
   @Bean
   CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration config = new CorsConfiguration();
-    config.setAllowedOrigins(List.of("http://localhost:5173","https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com"));
+
+    config.setAllowedOrigins(List.of(
+        "http://localhost:5173",
+        "https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com"));
+
     config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-    config.setAllowedHeaders(List.of("*"));
+
+    config.setAllowedHeaders(List.of(
+        "Content-Type",
+        "Authorization",
+        "X-XSRF-TOKEN"));
+
     config.setAllowCredentials(true);
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

@@ -10,6 +10,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -32,23 +33,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       FilterChain chain
   ) throws ServletException, IOException {
 
-    String token = null;
-
-    // 1️⃣ Authorization header
-    String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-    if (header != null && header.startsWith("Bearer ")) {
-      token = header.substring(7);
+    // ✅ If already authenticated, skip
+    if (SecurityContextHolder.getContext().getAuthentication() != null) {
+      chain.doFilter(request, response);
+      return;
     }
 
-    // 2️⃣ ACCESS_TOKEN cookie
-    if (token == null && request.getCookies() != null) {
-      for (Cookie c : request.getCookies()) {
-        if ("ACCESS_TOKEN".equals(c.getName())) {
-          token = c.getValue();
-          break;
-        }
-      }
-    }
+    String token = resolveToken(request);
 
     if (token == null) {
       chain.doFilter(request, response);
@@ -66,18 +57,39 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
           ? List.<SimpleGrantedAuthority>of()
           : roles.stream().map(SimpleGrantedAuthority::new).toList();
 
-      var auth = new UsernamePasswordAuthenticationToken(
-          username,
-          null,
-          authorities
-      );
+      var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
+
+      // ✅ add details (IP, session, etc.)
+      auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
       SecurityContextHolder.getContext().setAuthentication(auth);
 
-    } catch (Exception ignored) {
-      // invalid / expired token → ignore
+    } catch (Exception e) {
+      // ✅ log so you can see what's happening
+      System.out.println("JWT invalid or expired for " + request.getMethod() + " " + request.getRequestURI()
+          + " : " + e.getMessage());
     }
 
     chain.doFilter(request, response);
+  }
+
+  private String resolveToken(HttpServletRequest request) {
+    // 1) Authorization header
+    String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+    if (header != null && header.startsWith("Bearer ")) {
+      return header.substring(7);
+    }
+
+    // 2) ACCESS_TOKEN cookie
+    Cookie[] cookies = request.getCookies();
+    if (cookies != null) {
+      for (Cookie c : cookies) {
+        if ("ACCESS_TOKEN".equals(c.getName())) {
+          return c.getValue();
+        }
+      }
+    }
+
+    return null;
   }
 }
