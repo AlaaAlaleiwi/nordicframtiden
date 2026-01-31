@@ -22,7 +22,8 @@ public class ScheduleController {
 
     public record EventDto(
             Long id,
-            Long pharmacyId, // ✅ can be null for STAFF
+            Long pharmacyId, // can be null
+            String pharmacyName, // ✅ NEW
             Long userId,
             String userLabel,
             OffsetDateTime startAt,
@@ -30,9 +31,12 @@ public class ScheduleController {
             String note) {
         static EventDto from(ScheduleShift s) {
             Long pid = (s.getPharmacy() == null) ? null : s.getPharmacy().getId();
+            String pname = (s.getPharmacy() == null) ? null : s.getPharmacy().getName();
+
             return new EventDto(
                     s.getId(),
                     pid,
+                    pname, // ✅ NEW
                     s.getUser().getId(),
                     "@" + s.getUser().getUsername(),
                     s.getStartAt(),
