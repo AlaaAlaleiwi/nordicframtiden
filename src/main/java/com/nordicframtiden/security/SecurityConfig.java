@@ -40,25 +40,36 @@ public class SecurityConfig {
         .build();
   }
 
-  @Bean
-  CorsConfigurationSource corsConfigurationSource() {
-    CorsConfiguration config = new CorsConfiguration();
+@Bean
+CorsConfigurationSource corsConfigurationSource() {
+  CorsConfiguration config = new CorsConfiguration();
 
-    config.setAllowedOrigins(List.of(
-        "http://localhost:5173",
-        "https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com"));
+  config.setAllowedOrigins(List.of(
+      "http://localhost:5173",
+      "https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com"
+  ));
 
-    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+  config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 
-    config.setAllowedHeaders(List.of(
-        "Content-Type",
-        "Authorization",
-        "X-XSRF-TOKEN"));
+  // ✅ explicitly allow headers that browser complains about
+  config.setAllowedHeaders(List.of(
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+      "Cache-Control",
+      "Pragma"
+  ));
 
-    config.setAllowCredentials(true);
+  // ✅ if you need cookies
+  config.setAllowCredentials(true);
 
-    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-    source.registerCorsConfiguration("/**", config);
-    return source;
-  }
+  // ✅ important so browser can read Set-Cookie (optional but good)
+  config.setExposedHeaders(List.of("Set-Cookie"));
+
+  UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+  source.registerCorsConfiguration("/**", config);
+  return source;
+}
 }
