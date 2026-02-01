@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.security.core.Authentication;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -21,6 +21,25 @@ public class UserManagementController {
     this.userService = userService;
   }
 
+
+@GetMapping("/me")
+@PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
+public UserResponse me(Authentication auth) {
+  var username = auth.getName();
+
+  var user = userService.getDetailedByUsername(username);
+
+  return new UserResponse(
+      user.id(),
+      user.username(),
+      user.enabled(),
+      user.fullName(),
+      user.email(),
+      user.phone(),
+      user.hourlyCost(),
+      null
+  );
+}
 public record UserResponse(
     Long id,
     String username,

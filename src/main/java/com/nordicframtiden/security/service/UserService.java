@@ -24,7 +24,22 @@ public class UserService {
     this.profileRepo = profileRepo;
     this.encoder = encoder;
   }
+public DetailedUser getDetailedByUsername(String username) {
+  var u = userRepo.findByUsername(username)
+      .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
+  var profile = profileRepo.findByUserId(u.getId()).orElse(null);
+
+  return new DetailedUser(
+      u.getId(),
+      u.getUsername(),
+      u.isEnabled(),
+      profile != null ? profile.getFullName() : u.getUsername(),
+      profile != null ? profile.getEmail() : null,
+      profile != null ? profile.getPhone() : null,
+      profile != null ? profile.getHourlyCost() : null
+  );
+}
   public record UserRow(
       Long id,
       String username,
