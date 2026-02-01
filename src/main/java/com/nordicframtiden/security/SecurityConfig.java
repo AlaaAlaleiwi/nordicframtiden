@@ -21,7 +21,7 @@ public class SecurityConfig {
 
   @Bean
   SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                          JwtAuthenticationFilter jwtFilter) throws Exception {
+      JwtAuthenticationFilter jwtFilter) throws Exception {
 
     return http
         // ✅ IMPORTANT: wire Spring CORS using the bean below
@@ -30,22 +30,21 @@ public class SecurityConfig {
         .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> res.sendError(401)))
         .authorizeHttpRequests(auth -> auth
-    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-    .requestMatchers("/auth/**").permitAll()
+            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+            .requestMatchers("/auth/**").permitAll()
 
-    .requestMatchers("/api/admins/**").hasRole("ADMIN")
+            .requestMatchers("/api/admins/**").hasRole("ADMIN")
 
-    // ✅ allow pharmacists (USER) to access their own schedule endpoint
-    .requestMatchers("/api/schedules/me").hasAnyRole("ADMIN","USER")
+            // ✅ allow pharmacists (USER) to access their own schedule endpoint
+            .requestMatchers("/api/schedules/me").hasAnyRole("ADMIN", "USER")
 
-    // ✅ keep admin-only schedule listing/CRUD rules if you want
-    .requestMatchers("/api/schedules/**").hasAnyRole("ADMIN","STAFF") // or ADMIN only if that's your intention
+            // ✅ keep admin-only schedule listing/CRUD rules if you want
+            .requestMatchers("/api/schedules/**").hasAnyRole("ADMIN", "STAFF") // or ADMIN only if that's your intention
 
-    .requestMatchers("/api/staff-schedules/**").hasAnyRole("ADMIN","STAFF")
+            .requestMatchers("/api/staff-schedules/**").hasAnyRole("ADMIN", "STAFF")
 
-    .requestMatchers("/api/**").authenticated()
-    .anyRequest().authenticated()
-)
+            .requestMatchers("/api/**").authenticated()
+            .anyRequest().authenticated())
         .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
   }
@@ -54,29 +53,29 @@ public class SecurityConfig {
   CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration config = new CorsConfiguration();
 
-    // ✅ must be exact origins, no "*"
+    // ✅ Exact frontend origins
     config.setAllowedOrigins(List.of(
         "http://localhost:5173",
-        "https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com"
-    ));
+        "https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com"));
 
-    config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+    // ✅ IMPORTANT: include PATCH (preflight is failing because PATCH isn't allowed)
+    config.setAllowedMethods(List.of(
+        "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 
-    // ✅ include headers your axios sends + common ones
+    // ✅ Allow headers used by axios + preflight
     config.setAllowedHeaders(List.of(
-        "Content-Type",
         "Authorization",
+        "Content-Type",
         "X-Requested-With",
-        "X-XSRF-TOKEN",
-        "Cache-Control",
-        "Pragma"
-    ));
+        "Accept",
+        "Origin"));
 
-    // ✅ allow cookies
+    // If you use cookies (you do set cookies sometimes)
     config.setAllowCredentials(true);
 
-    // optional (not required for cookies to work, but fine)
+    // Optional, but nice
     config.setExposedHeaders(List.of("Set-Cookie"));
+    config.setMaxAge(3600L);
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/**", config);
