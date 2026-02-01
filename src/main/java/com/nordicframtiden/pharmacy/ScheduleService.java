@@ -4,7 +4,7 @@ import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.security.core.Authentication;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -28,7 +28,16 @@ public class ScheduleService {
   public List<ScheduleShift> listRange(OffsetDateTime start, OffsetDateTime end, Long pharmacyId, Long userId) {
     return shiftRepo.findInRange(start, end, pharmacyId, userId);
   }
+public List<ScheduleShift> listForCurrentUser(Authentication auth, OffsetDateTime start, OffsetDateTime end) {
+    if (auth == null || auth.getName() == null) {
+      throw new IllegalArgumentException("Not authenticated");
+    }
 
+    AppUser u = userRepo.findByUsername(auth.getName())
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+    return shiftRepo.findInRange(start, end, null, u.getId());
+  }
 @Transactional
 public ScheduleShift create(Long pharmacyId, Long userId,
                             OffsetDateTime startAt, OffsetDateTime endAt, String note) {

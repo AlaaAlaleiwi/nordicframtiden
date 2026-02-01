@@ -1,9 +1,10 @@
 package com.nordicframtiden.company;
 
+import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
-
+import org.springframework.security.core.Authentication;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -21,7 +22,16 @@ public class StaffScheduleService {
   public List<StaffShift> listRange(OffsetDateTime start, OffsetDateTime end, Long userId) {
     return repo.findInRange(start, end, userId);
   }
+public List<StaffShift> listForCurrentUser(Authentication auth, OffsetDateTime start, OffsetDateTime end) {
+  if (auth == null || auth.getName() == null) {
+    throw new IllegalArgumentException("Not authenticated");
+  }
 
+  AppUser u = userRepo.findByUsername(auth.getName())
+      .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+  return repo.findInRange(start, end, u.getId());
+}
   @Transactional
   public StaffShift create(Long userId, OffsetDateTime startAt, OffsetDateTime endAt, String note) {
     if (userId == null) throw new IllegalArgumentException("userId is required");

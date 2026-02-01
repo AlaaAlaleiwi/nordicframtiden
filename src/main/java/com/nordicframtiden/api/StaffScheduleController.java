@@ -4,6 +4,7 @@ import com.nordicframtiden.company.StaffScheduleService;
 import com.nordicframtiden.company.StaffShift;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication; // ✅ correct
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
@@ -11,7 +12,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/staff-schedules")
-@PreAuthorize("hasAnyRole('ADMIN','STAFF')")
+@PreAuthorize("hasAnyRole('ADMIN','STAFF')") // ✅ staff only
 public class StaffScheduleController {
 
   private final StaffScheduleService service;
@@ -40,6 +41,30 @@ public class StaffScheduleController {
     }
   }
 
+  /** ✅ staff calls this */
+  @GetMapping("/me")
+  public List<EventDto> myStaffSchedules(
+      @RequestParam OffsetDateTime start,
+      @RequestParam OffsetDateTime end,
+      Authentication auth
+  ) {
+    return service.listForCurrentUser(auth, start, end)
+        .stream()
+        .map(EventDto::from)
+        .toList();
+  }
+
+  /** ✅ admin listing */
+  @GetMapping
+  @PreAuthorize("hasRole('ADMIN')")
+  public List<EventDto> list(
+      @RequestParam OffsetDateTime start,
+      @RequestParam OffsetDateTime end,
+      @RequestParam(required = false) Long userId
+  ) {
+    return service.listRange(start, end, userId).stream().map(EventDto::from).toList();
+  }
+
   public record CreateRequest(
       @NotNull Long userId,
       @NotNull OffsetDateTime startAt,
@@ -54,28 +79,22 @@ public class StaffScheduleController {
       String note
   ) {}
 
-  @GetMapping
-  public List<EventDto> list(
-      @RequestParam OffsetDateTime start,
-      @RequestParam OffsetDateTime end,
-      @RequestParam(required = false) Long userId
-  ) {
-    return service.listRange(start, end, userId).stream().map(EventDto::from).toList();
-  }
-
   @PostMapping
+  @PreAuthorize("hasRole('ADMIN')")
   public EventDto create(@RequestBody CreateRequest req) {
     var created = service.create(req.userId(), req.startAt(), req.endAt(), req.note());
     return EventDto.from(created);
   }
 
   @PutMapping("/{id}")
+  @PreAuthorize("hasRole('ADMIN')")
   public EventDto update(@PathVariable Long id, @RequestBody UpdateRequest req) {
     var updated = service.update(id, req.userId(), req.startAt(), req.endAt(), req.note());
     return EventDto.from(updated);
   }
 
   @DeleteMapping("/{id}")
+  @PreAuthorize("hasRole('ADMIN')")
   public void delete(@PathVariable Long id) {
     service.delete(id);
   }
