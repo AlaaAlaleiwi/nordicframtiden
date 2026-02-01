@@ -35,7 +35,7 @@ public class AuthController {
 
   private static final String SAME_SITE = "None";
   private static final boolean SECURE = true;
-  private static final Duration ACCESS_TTL = Duration.ofMinutes(15);
+  private static final Duration ACCESS_TTL = Duration.ofMinutes(60);
   private static final Duration REFRESH_TTL = Duration.ofDays(7);
 
   // ✅ Append Partitioned for Safari / third-party cookie reliability
