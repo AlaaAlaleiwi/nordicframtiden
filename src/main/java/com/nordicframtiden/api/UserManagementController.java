@@ -21,14 +21,15 @@ public class UserManagementController {
     this.userService = userService;
   }
 
- public record UserResponse(
+public record UserResponse(
     Long id,
     String username,
     boolean enabled,
     String fullName,
     String email,
     String phone,
-    BigDecimal hourlyCost // ✅ NEW
+    BigDecimal hourlyCost,
+    String password // ✅ add
 ) {}
 
 public record CreateUserRequest(
@@ -49,14 +50,14 @@ public record UpdateUserRequest(
 @GetMapping("/{id}")
 public UserResponse getOne(@PathVariable Long id) {
   var r = userService.getDetailedById(id); // you implement this in service (see below)
-  return new UserResponse(r.id(), r.username(), r.enabled(), r.fullName(), r.email(), r.phone(), r.hourlyCost());
+  return new UserResponse(r.id(), r.username(), r.enabled(), r.fullName(), r.email(), r.phone(), r.hourlyCost(), null);
 }
   // GET /api/users?role=USER
   @GetMapping
 public List<UserResponse> list(@RequestParam Role role) {
   return userService.listDetailedByRole(role).stream()
       .map(r -> new UserResponse(
-          r.id(), r.username(), r.enabled(), r.fullName(), r.email(), r.phone(), r.hourlyCost()
+          r.id(), r.username(), r.enabled(), r.fullName(), r.email(), r.phone(), r.hourlyCost(), null
       ))
       .toList();
 }
@@ -76,7 +77,8 @@ public UserResponse create(@RequestParam Role role, @RequestBody CreateUserReque
 
   return new UserResponse(
       created.id(), created.username(), created.enabled(), created.fullName(), created.email(), created.phone(),
-      created.hourlyCost() // ✅ NEW
+      created.hourlyCost(),
+      created.password()  
   );
 }
 
@@ -93,7 +95,7 @@ public UserResponse update(@PathVariable Long id, @RequestBody UpdateUserRequest
 
   return new UserResponse(
       updated.id(), updated.username(), updated.enabled(), updated.fullName(), updated.email(), updated.phone(),
-      updated.hourlyCost() // ✅ NEW
+      updated.hourlyCost(), null
   );
 }
 }
