@@ -30,13 +30,22 @@ public class SecurityConfig {
         .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> res.sendError(401)))
         .authorizeHttpRequests(auth -> auth
-            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-            .requestMatchers("/auth/**").permitAll()
-            .requestMatchers("/api/admins/**").hasRole("ADMIN")
-            .requestMatchers("/api/schedules/**").hasAnyRole("ADMIN","STAFF")
-            .requestMatchers("/api/staff-schedules/**").hasAnyRole("ADMIN","STAFF")
-            .anyRequest().authenticated()
-        )
+    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+    .requestMatchers("/auth/**").permitAll()
+
+    .requestMatchers("/api/admins/**").hasRole("ADMIN")
+
+    // ✅ allow pharmacists (USER) to access their own schedule endpoint
+    .requestMatchers("/api/schedules/me").hasAnyRole("ADMIN","USER")
+
+    // ✅ keep admin-only schedule listing/CRUD rules if you want
+    .requestMatchers("/api/schedules/**").hasAnyRole("ADMIN","STAFF") // or ADMIN only if that's your intention
+
+    .requestMatchers("/api/staff-schedules/**").hasAnyRole("ADMIN","STAFF")
+
+    .requestMatchers("/api/**").authenticated()
+    .anyRequest().authenticated()
+)
         .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
   }
