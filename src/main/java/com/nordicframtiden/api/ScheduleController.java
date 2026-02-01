@@ -11,7 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/schedules")
-@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_USER','USER', 'ADMIN')") // safest
+@PreAuthorize("hasAnyRole('ADMIN','USER')")
 public class ScheduleController {
 
   private final ScheduleService service;
@@ -31,8 +31,8 @@ public class ScheduleController {
       String note
   ) {
     static EventDto from(ScheduleShift s) {
-      Long pid = (s.getPharmacy() == null) ? null : s.getPharmacy().getId();
-      String pname = (s.getPharmacy() == null) ? null : s.getPharmacy().getName();
+      Long pid = s.getPharmacy() == null ? null : s.getPharmacy().getId();
+      String pname = s.getPharmacy() == null ? null : s.getPharmacy().getName();
       return new EventDto(
           s.getId(),
           pid,
@@ -46,31 +46,45 @@ public class ScheduleController {
     }
   }
 
-  // ✅ Pharmacist: get own schedule (no userId needed)
+  // ✅ pharmacist gets own schedule
   @GetMapping("/me")
-  public List<EventDto> mySchedules(
-      @RequestParam OffsetDateTime start,
-      @RequestParam OffsetDateTime end,
-      Authentication auth
-  ) {
+  public List<EventDto> mySchedules(@RequestParam OffsetDateTime start,
+                                   @RequestParam OffsetDateTime end,
+                                   Authentication auth) {
     return service.listForCurrentUser(auth, start, end)
-        .stream()
-        .map(EventDto::from)
-        .toList();
+        .stream().map(EventDto::from).toList();
   }
 
-  // ✅ Admin only list
+  // ✅ admin listing
   @GetMapping
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
-  public List<EventDto> list(
-      @RequestParam OffsetDateTime start,
-      @RequestParam OffsetDateTime end,
-      @RequestParam(required = false) Long pharmacyId,
-      @RequestParam(required = false) Long userId
-  ) {
+  @PreAuthorize("hasRole('ADMIN')")
+  public List<EventDto> list(@RequestParam OffsetDateTime start,
+                             @RequestParam OffsetDateTime end,
+                             @RequestParam(required = false) Long pharmacyId,
+                             @RequestParam(required = false) Long userId) {
     return service.listRange(start, end, pharmacyId, userId)
-        .stream()
-        .map(EventDto::from)
-        .toList();
+        .stream().map(EventDto::from).toList();
+  }
+
+  public record CreateRequest(
+      Long pharmacyId,
+      Long userId,
+      OffsetDateTime startAt,
+      OffsetDateTime endAt,
+      String note
+  ) {}
+
+  // ✅ THIS is what your UI is calling
+  @PostMapping
+  @PreAuthorize("hasRole('ADMIN')")
+  public EventDto create(@RequestBody CreateRequest req) {
+    var created = service.create(
+        req.pharmacyId(),
+        req.userId(),
+        req.startAt(),
+        req.endAt(),
+        req.note()
+    );
+    return EventDto.from(created);
   }
 }

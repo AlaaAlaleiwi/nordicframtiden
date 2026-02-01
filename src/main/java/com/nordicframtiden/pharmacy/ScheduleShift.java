@@ -3,61 +3,105 @@ package com.nordicframtiden.pharmacy;
 import com.nordicframtiden.security.model.AppUser;
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "schedule_shift")
 public class ScheduleShift {
 
-  @Id
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
-  private Long id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-  @ManyToOne(optional = false, fetch = FetchType.LAZY)
-  @JoinColumn(name = "pharmacy_id", nullable = false)
-  private Pharmacy pharmacy;
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "pharmacy_id", nullable = false)
+    private Pharmacy pharmacy;
 
-  @ManyToOne(optional = false, fetch = FetchType.LAZY)
-  @JoinColumn(name = "user_id", nullable = false)
-  private AppUser user;
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private AppUser user;
 
-  @Column(name = "start_at", nullable = false)
-  private OffsetDateTime startAt;
+    @Column(name = "start_at", nullable = false)
+    private OffsetDateTime startAt;
 
-  @Column(name = "end_at", nullable = false)
-  private OffsetDateTime endAt;
+    @Column(name = "end_at", nullable = false)
+    private OffsetDateTime endAt;
 
-  @Column(name = "note", length = 300)
-  private String note;
+    @Column(name = "note", length = 300)
+    private String note;
 
-  @Column(name = "created_at", nullable = false)
-  private OffsetDateTime createdAt = OffsetDateTime.now();
+    @Column(name = "created_at", nullable = false)
+    private OffsetDateTime createdAt = OffsetDateTime.now();
 
-  @Column(name = "updated_at", nullable = false)
-  private OffsetDateTime updatedAt = OffsetDateTime.now();
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt = OffsetDateTime.now();
+    // ScheduleShift.java
+    @Column(name = "hourly_cost_snapshot", precision = 12, scale = 2)
+    private BigDecimal hourlyCostSnapshot;
 
-  @PreUpdate
-  void preUpdate() {
-    updatedAt = OffsetDateTime.now();
-  }
+    public BigDecimal getHourlyCostSnapshot() {
+        return hourlyCostSnapshot;
+    }
 
-  public Long getId() { return id; }
+    public void setHourlyCostSnapshot(BigDecimal hourlyCostSnapshot) {
+        this.hourlyCostSnapshot = hourlyCostSnapshot;
+    }
 
-  public Pharmacy getPharmacy() { return pharmacy; }
-  public void setPharmacy(Pharmacy pharmacy) { this.pharmacy = pharmacy; }
+    @PreUpdate
+    void preUpdate() {
+        updatedAt = OffsetDateTime.now();
+    }
 
-  public AppUser getUser() { return user; }
-  public void setUser(AppUser user) { this.user = user; }
+    public Long getId() {
+        return id;
+    }
 
-  public OffsetDateTime getStartAt() { return startAt; }
-  public void setStartAt(OffsetDateTime startAt) { this.startAt = startAt; }
+    public Pharmacy getPharmacy() {
+        return pharmacy;
+    }
 
-  public OffsetDateTime getEndAt() { return endAt; }
-  public void setEndAt(OffsetDateTime endAt) { this.endAt = endAt; }
+    public void setPharmacy(Pharmacy pharmacy) {
+        this.pharmacy = pharmacy;
+    }
 
-  public String getNote() { return note; }
-  public void setNote(String note) { this.note = note; }
+    public AppUser getUser() {
+        return user;
+    }
 
-  public OffsetDateTime getCreatedAt() { return createdAt; }
-  public OffsetDateTime getUpdatedAt() { return updatedAt; }
+    public void setUser(AppUser user) {
+        this.user = user;
+    }
+
+    public OffsetDateTime getStartAt() {
+        return startAt;
+    }
+
+    public void setStartAt(OffsetDateTime startAt) {
+        this.startAt = startAt;
+    }
+
+    public OffsetDateTime getEndAt() {
+        return endAt;
+    }
+
+    public void setEndAt(OffsetDateTime endAt) {
+        this.endAt = endAt;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public void setNote(String note) {
+        this.note = note;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
+    }
 }

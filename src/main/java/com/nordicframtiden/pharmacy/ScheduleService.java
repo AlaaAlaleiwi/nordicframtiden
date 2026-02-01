@@ -2,9 +2,13 @@ package com.nordicframtiden.pharmacy;
 
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.repo.UserProfileRepository;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.Authentication;
+
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -15,13 +19,17 @@ public class ScheduleService {
     private final PharmacyRepository pharmacyRepo;
     private final AppUserRepository userRepo;
 
+    private final UserProfileRepository profileRepo;
+
     public ScheduleService(
             ScheduleShiftRepository shiftRepo,
             PharmacyRepository pharmacyRepo,
-            AppUserRepository userRepo) {
+            AppUserRepository userRepo,
+            UserProfileRepository profileRepo) {
         this.shiftRepo = shiftRepo;
         this.pharmacyRepo = pharmacyRepo;
         this.userRepo = userRepo;
+        this.profileRepo = profileRepo;
     }
 
     public List<ScheduleShift> listRange(OffsetDateTime start, OffsetDateTime end, Long pharmacyId, Long userId) {
@@ -51,12 +59,21 @@ public class ScheduleService {
         Pharmacy pharmacy = pharmacyRepo.findById(pharmacyId)
                 .orElseThrow(() -> new IllegalArgumentException("Pharmacy not found"));
 
+        var profile = profileRepo.findByUserId(user.getId()).orElse(null);
+
+        BigDecimal hourly = (profile != null && profile.getHourlyCost() != null)
+                ? profile.getHourlyCost()
+                : BigDecimal.ZERO;
+
         ScheduleShift s = new ScheduleShift();
-        s.setPharmacy(pharmacy); // ✅ never null here
+        s.setPharmacy(pharmacy);
         s.setUser(user);
         s.setStartAt(startAt);
         s.setEndAt(endAt);
         s.setNote(note);
+
+        // ✅ snapshot at creation time
+        s.setHourlyCostSnapshot(hourly);
 
         return shiftRepo.save(s);
     }
