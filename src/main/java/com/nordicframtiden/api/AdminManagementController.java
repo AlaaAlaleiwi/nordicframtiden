@@ -53,7 +53,8 @@ public class AdminManagementController {
       boolean enabled,
       String fullName,
       String email,
-      String phone
+      String phone,
+      String password
   ) {}
 
   public record AdminStats(
@@ -75,7 +76,8 @@ public class AdminManagementController {
             a.enabled(),
             a.fullName(),
             a.email(),
-            a.phone()
+            a.phone(),
+            null
         ))
         .toList();
   }
@@ -97,7 +99,8 @@ public class AdminManagementController {
         created.enabled(),
         created.fullName(),
         created.email(),
-        created.phone()
+        created.phone(),
+        created.password()
     );
   }
 
@@ -121,7 +124,8 @@ public class AdminManagementController {
         updated.enabled(),
         updated.fullName(),
         updated.email(),
-        updated.phone()
+        updated.phone(),
+        null
     );
   }
 

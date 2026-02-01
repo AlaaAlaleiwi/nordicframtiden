@@ -33,12 +33,15 @@ public class AdminService {
       boolean enabled,
       String fullName,
       String email,
-      String phone
-  ) {}
+      String phone,
+      String password) {
+  }
 
-  /* =========================
-     LIST (with profile fields)
-     ========================= */
+  /*
+   * =========================
+   * LIST (with profile fields)
+   * =========================
+   */
   @Transactional(readOnly = true)
   public List<AdminRow> listAdminsDetailed() {
     return repo.findAllAdmins().stream()
@@ -50,61 +53,64 @@ public class AdminService {
               u.isEnabled(),
               p != null ? p.getFullName() : null,
               p != null ? p.getEmail() : null,
-              p != null ? p.getPhone() : null
-          );
+              p != null ? p.getPhone() : null,
+              null);
         })
         .toList();
   }
 
-  /* =========================
-     CREATE (password generated)
-     ========================= */
+  /*
+   * =========================
+   * CREATE (password generated)
+   * =========================
+   */
   @Transactional
-public AdminRow createAdminWithProfile(
-    boolean enabled,
-    String fullName,
-    String email,
-    String phone
-) {
+  public AdminRow createAdminWithProfile(
+      boolean enabled,
+      String fullName,
+      String email,
+      String phone) {
 
-  if (adminProfileRepo.existsByEmail(email))
-    throw new IllegalArgumentException("Email already exists");
+    if (adminProfileRepo.existsByEmail(email))
+      throw new IllegalArgumentException("Email already exists");
 
-  if (adminProfileRepo.existsByPhone(phone))
-    throw new IllegalArgumentException("Phone already exists");
+    if (adminProfileRepo.existsByPhone(phone))
+      throw new IllegalArgumentException("Phone already exists");
 
-  // 1️⃣ Generate username
-  String username = generateUniqueUsername(fullName);
+    // 1️⃣ Generate username
+    String username = generateUniqueUsername(fullName);
+    String password = generatePassword();
+    // 2️⃣ Create login user
+    AppUser user = new AppUser();
+    user.setUsername(username);
+    user.setPasswordHash(encoder.encode(password));
+    user.setEnabled(enabled);
+    user.setRoles(Set.of(Role.ADMIN));
+    user = repo.save(user);
 
-  // 2️⃣ Create login user
-  AppUser user = new AppUser();
-  user.setUsername(username);
-  user.setPasswordHash(encoder.encode(generatePassword()));
-  user.setEnabled(enabled);
-  user.setRoles(Set.of(Role.ADMIN));
-  user = repo.save(user);
+    // 3️⃣ Create admin profile
+    AdminProfile profile = new AdminProfile();
+    profile.setFullName(fullName);
+    profile.setEmail(email);
+    profile.setPhone(phone);
+    profile.setUser(user);
+    adminProfileRepo.save(profile);
 
-  // 3️⃣ Create admin profile
-  AdminProfile profile = new AdminProfile();
-  profile.setFullName(fullName);
-  profile.setEmail(email);
-  profile.setPhone(phone);
-  profile.setUser(user);
-  adminProfileRepo.save(profile);
+    return new AdminRow(
+        user.getId(),
+        user.getUsername(),
+        user.isEnabled(),
+        profile.getFullName(),
+        profile.getEmail(),
+        profile.getPhone(),
+        password);
+  }
 
-  return new AdminRow(
-      user.getId(),
-      user.getUsername(),
-      user.isEnabled(),
-      profile.getFullName(),
-      profile.getEmail(),
-      profile.getPhone()
-  );
-}
-
-  /* =========================
-     UPDATE (profile + username + enabled)
-     ========================= */
+  /*
+   * =========================
+   * UPDATE (profile + username + enabled)
+   * =========================
+   */
   @Transactional
   public AdminRow updateAdminWithProfile(
       Long id,
@@ -112,8 +118,7 @@ public AdminRow createAdminWithProfile(
       Boolean enabled,
       String fullName,
       String email,
-      String phone
-  ) {
+      String phone) {
 
     AppUser u = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Admin not found"));
 
@@ -123,26 +128,31 @@ public AdminRow createAdminWithProfile(
 
     // username
     if (newUsername != null && !newUsername.isBlank() && !newUsername.equals(u.getUsername())) {
-      if (repo.existsByUsername(newUsername)) throw new IllegalArgumentException("Username already exists");
+      if (repo.existsByUsername(newUsername))
+        throw new IllegalArgumentException("Username already exists");
       u.setUsername(newUsername);
     }
 
     // enabled
-    if (enabled != null) u.setEnabled(enabled);
+    if (enabled != null)
+      u.setEnabled(enabled);
 
     // profile
     AdminProfile profile = adminProfileRepo.findByUserId(u.getId())
         .orElseThrow(() -> new IllegalArgumentException("Admin profile not found"));
 
-    if (fullName != null && !fullName.isBlank()) profile.setFullName(fullName);
+    if (fullName != null && !fullName.isBlank())
+      profile.setFullName(fullName);
 
     if (email != null && !email.isBlank() && !email.equals(profile.getEmail())) {
-      if (adminProfileRepo.existsByEmail(email)) throw new IllegalArgumentException("Email already exists");
+      if (adminProfileRepo.existsByEmail(email))
+        throw new IllegalArgumentException("Email already exists");
       profile.setEmail(email);
     }
 
     if (phone != null && !phone.isBlank() && !phone.equals(profile.getPhone())) {
-      if (adminProfileRepo.existsByPhone(phone)) throw new IllegalArgumentException("Phone already exists");
+      if (adminProfileRepo.existsByPhone(phone))
+        throw new IllegalArgumentException("Phone already exists");
       profile.setPhone(phone);
     }
 
@@ -155,13 +165,15 @@ public AdminRow createAdminWithProfile(
         u.isEnabled(),
         profile.getFullName(),
         profile.getEmail(),
-        profile.getPhone()
-    );
+        profile.getPhone(),
+      null);
   }
 
-  /* =========================
-     DELETE
-     ========================= */
+  /*
+   * =========================
+   * DELETE
+   * =========================
+   */
   @Transactional
   public void deleteAdmin(Long id) {
     AppUser u = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Admin not found"));
@@ -174,9 +186,11 @@ public AdminRow createAdminWithProfile(
     repo.delete(u);
   }
 
-  /* =========================
-     PASSWORD GENERATOR
-     ========================= */
+  /*
+   * =========================
+   * PASSWORD GENERATOR
+   * =========================
+   */
   private static final SecureRandom RAND = new SecureRandom();
 
   private String generatePassword() {
@@ -188,28 +202,28 @@ public AdminRow createAdminWithProfile(
 
   private String generateUniqueUsername(String fullName) {
 
-  // Normalize accents: Å → A, é → e
-  String base = java.text.Normalizer.normalize(fullName, java.text.Normalizer.Form.NFD)
-      .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
-      .toLowerCase()
-      .replaceAll("[^a-z ]", "")
-      .trim()
-      .replaceAll("\\s+", ".");
+    // Normalize accents: Å → A, é → e
+    String base = java.text.Normalizer.normalize(fullName, java.text.Normalizer.Form.NFD)
+        .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+        .toLowerCase()
+        .replaceAll("[^a-z ]", "")
+        .trim()
+        .replaceAll("\\s+", ".");
 
-  // Use first + last name if possible
-  String[] parts = base.split("\\.");
-  if (parts.length >= 2) {
-    base = parts[0] + "." + parts[parts.length - 1];
+    // Use first + last name if possible
+    String[] parts = base.split("\\.");
+    if (parts.length >= 2) {
+      base = parts[0] + "." + parts[parts.length - 1];
+    }
+
+    String username = base;
+    int counter = 1;
+
+    while (repo.existsByUsername(username)) {
+      counter++;
+      username = base + counter;
+    }
+
+    return username;
   }
-
-  String username = base;
-  int counter = 1;
-
-  while (repo.existsByUsername(username)) {
-    counter++;
-    username = base + counter;
-  }
-
-  return username;
-}
 }

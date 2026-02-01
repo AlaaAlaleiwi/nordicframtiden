@@ -32,8 +32,8 @@ public class UserService {
       String fullName,
       String email,
       String phone,
-      BigDecimal hourlyCost // ✅ NEW
-  ) {
+      BigDecimal hourlyCost,
+      String password) {
   }
 
   public record DetailedUser(
@@ -66,8 +66,8 @@ public class UserService {
           p == null ? null : p.getFullName(),
           p == null ? null : p.getEmail(),
           p == null ? null : p.getPhone(),
-          p == null ? null : p.getHourlyCost() // ✅ NEW
-      );
+          p == null ? null : p.getHourlyCost(),
+          null);
     }).toList();
   }
 
@@ -103,10 +103,14 @@ public class UserService {
     profileRepo.save(p);
 
     return new UserRow(
-        u.getId(), u.getUsername(), u.isEnabled(),
-        p.getFullName(), p.getEmail(), p.getPhone(),
-        p.getHourlyCost() // ✅ NEW
-    );
+        u.getId(),
+        u.getUsername(),
+        u.isEnabled(),
+        p.getFullName(),
+        p.getEmail(),
+        p.getPhone(),
+        p.getHourlyCost(),
+        rawPassword);
   }
 
   @Transactional
@@ -153,10 +157,14 @@ public class UserService {
     userRepo.save(u);
 
     return new UserRow(
-        u.getId(), u.getUsername(), u.isEnabled(),
-        p.getFullName(), p.getEmail(), p.getPhone(),
-        p.getHourlyCost() // ✅ NEW
-    );
+        u.getId(),
+        u.getUsername(),
+        u.isEnabled(),
+        p.getFullName(),
+        p.getEmail(),
+        p.getPhone(),
+        p.getHourlyCost(),
+        null);
   }
 
   @Transactional
