@@ -3,6 +3,9 @@ package com.nordicframtiden.api;
 import com.nordicframtiden.pharmacy.ScheduleService;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.service.UserService;
+import com.nordicframtiden.service.PayrollService;
+import com.nordicframtiden.service.model.NetSalaryResponse;
+
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,10 +22,12 @@ public class PayrollController {
 
   private final UserService userService;
   private final ScheduleService scheduleService;
+  private final PayrollService payrollService;
 
-  public PayrollController(UserService userService, ScheduleService scheduleService) {
+  public PayrollController(UserService userService, ScheduleService scheduleService, PayrollService payrollService) {
     this.userService = userService;
     this.scheduleService = scheduleService;
+    this.payrollService = payrollService;
   }
 
   public record SalaryRow(
@@ -31,8 +36,15 @@ public class PayrollController {
       String email,
       BigDecimal hourlyCost,
       double totalHours,
-      BigDecimal totalSalary
-  ) {}
+      BigDecimal totalSalary) {
+  }
+
+  @GetMapping("/net-salary")
+  public NetSalaryResponse netSalary(@RequestParam Long userId,
+      @RequestParam int year,
+      @RequestParam int month) {
+    return payrollService.netSalaryForUserMonth(userId, year, month);
+  }
 
   /**
    * GET /api/payroll/salaries?start=2026-01-01T00:00:00Z&end=2026-02-01T00:00:00Z
@@ -42,8 +54,7 @@ public class PayrollController {
   public List<SalaryRow> salaries(
       @RequestParam OffsetDateTime start,
       @RequestParam OffsetDateTime end,
-      @RequestParam(required = false) Long pharmacyId
-  ) {
+      @RequestParam(required = false) Long pharmacyId) {
 
     // Pharmacists: you said "Users" should be pharmacists => Role.USER
     // If pharmacists are STAFF instead, change Role.USER -> Role.STAFF
@@ -55,11 +66,14 @@ public class PayrollController {
     // Sum hours by userId
     Map<Long, Double> hoursByUser = new HashMap<>();
     for (var s : shifts) {
-      if (s.getUser() == null || s.getUser().getId() == null) continue;
-      if (s.getStartAt() == null || s.getEndAt() == null) continue;
+      if (s.getUser() == null || s.getUser().getId() == null)
+        continue;
+      if (s.getStartAt() == null || s.getEndAt() == null)
+        continue;
 
       double hours = Duration.between(s.getStartAt(), s.getEndAt()).toMinutes() / 60.0;
-      if (hours <= 0) continue;
+      if (hours <= 0)
+        continue;
 
       hoursByUser.merge(s.getUser().getId(), hours, Double::sum);
     }
@@ -82,8 +96,7 @@ public class PayrollController {
           u.email(),
           hourly.setScale(2, RoundingMode.HALF_UP),
           totalHours,
-          salary
-      ));
+          salary));
     }
 
     // Optional: sort highest salary first

@@ -4,9 +4,11 @@ import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.service.UserService;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -21,100 +23,143 @@ public class UserManagementController {
     this.userService = userService;
   }
 
+  // ---------- DTOs ----------
 
-@GetMapping("/me")
-@PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
-public UserResponse me(Authentication auth) {
-  var username = auth.getName();
+  public record UserResponse(
+      Long id,
+      String username,
+      boolean enabled,
+      String fullName,
+      String email,
+      String phone,
+      BigDecimal hourlyCost,
+      Integer yearOfBirth,
+      String countyCode,
+      String municipalityCode,
+      String password // returned only on create
+  ) {}
 
-  var user = userService.getDetailedByUsername(username);
+  public record CreateUserRequest(
+      @NotBlank String fullName,
+      @NotBlank @Email String email,
+      @NotBlank String phone,
+      Boolean enabled,
+      BigDecimal hourlyCost,
 
-  return new UserResponse(
-      user.id(),
-      user.username(),
-      user.enabled(),
-      user.fullName(),
-      user.email(),
-      user.phone(),
-      user.hourlyCost(),
-      null
-  );
-}
-public record UserResponse(
-    Long id,
-    String username,
-    boolean enabled,
-    String fullName,
-    String email,
-    String phone,
-    BigDecimal hourlyCost,
-    String password // ✅ add
-) {}
+      @NotNull Integer yearOfBirth,
+      @NotBlank String countyCode,
+      @NotBlank String municipalityCode
+  ) {}
 
-public record CreateUserRequest(
-    @NotBlank String fullName,
-    @NotBlank @Email String email,
-    @NotBlank String phone,
-    Boolean enabled,
-    BigDecimal hourlyCost // ✅ NEW
-) {}
+  public record UpdateUserRequest(
+      String fullName,
+      @Email String email,
+      String phone,
+      Boolean enabled,
+      BigDecimal hourlyCost,
 
-public record UpdateUserRequest(
-    String fullName,
-    @Email String email,
-    String phone,
-    Boolean enabled,
-    BigDecimal hourlyCost // ✅ NEW
-) {}
-@GetMapping("/{id}")
-public UserResponse getOne(@PathVariable Long id) {
-  var r = userService.getDetailedById(id); // you implement this in service (see below)
-  return new UserResponse(r.id(), r.username(), r.enabled(), r.fullName(), r.email(), r.phone(), r.hourlyCost(), null);
-}
+      Integer yearOfBirth,
+      String countyCode,
+      String municipalityCode
+  ) {}
+
+  private static UserResponse toResponse(UserService.DetailedUser u, String password) {
+    return new UserResponse(
+        u.id(),
+        u.username(),
+        u.enabled(),
+        u.fullName(),
+        u.email(),
+        u.phone(),
+        u.hourlyCost(),
+        u.yearOfBirth(),
+        u.countyCode(),
+        u.municipalityCode(),
+        password
+    );
+  }
+
+  private static UserResponse toResponse(UserService.UserRow u, String password) {
+    return new UserResponse(
+        u.id(),
+        u.username(),
+        u.enabled(),
+        u.fullName(),
+        u.email(),
+        u.phone(),
+        u.hourlyCost(),
+        u.yearOfBirth(),
+        u.countyCode(),
+        u.municipalityCode(),
+        password
+    );
+  }
+
+  // ---------- Endpoints ----------
+
+  @GetMapping("/me")
+  @PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
+  public UserResponse me(Authentication auth) {
+    var username = auth.getName();
+    var user = userService.getDetailedByUsername(username);
+    return toResponse(user, null);
+  }
+
+  @GetMapping("/{id}")
+  public UserResponse getOne(@PathVariable Long id) {
+    var r = userService.getDetailedById(id);
+    return toResponse(r, null);
+  }
+
   // GET /api/users?role=USER
   @GetMapping
-public List<UserResponse> list(@RequestParam Role role) {
-  return userService.listDetailedByRole(role).stream()
-      .map(r -> new UserResponse(
-          r.id(), r.username(), r.enabled(), r.fullName(), r.email(), r.phone(), r.hourlyCost(), null
-      ))
-      .toList();
-}
+  public List<UserResponse> list(@RequestParam Role role) {
+    return userService.listDetailedByRole(role).stream()
+        .map(r -> toResponse(r, null))
+        .toList();
+  }
 
-@PostMapping
-public UserResponse create(@RequestParam Role role, @RequestBody CreateUserRequest req) {
-  boolean enabled = req.enabled() == null || req.enabled();
+  @PostMapping
+  public UserResponse create(@RequestParam Role role, @RequestBody CreateUserRequest req) {
+    boolean enabled = req.enabled() == null || req.enabled();
 
-  var created = userService.createWithProfile(
-      role,
-      enabled,
-      req.fullName(),
-      req.email(),
-      req.phone(),
-      req.hourlyCost() // ✅ NEW
-  );
+    var created = userService.createWithProfile(
+        role,
+        enabled,
+        req.fullName(),
+        req.email(),
+        req.phone(),
+        req.hourlyCost(),
+        req.yearOfBirth(),
+        req.countyCode(),
+        req.municipalityCode()
+    );
 
-  return new UserResponse(
-      created.id(), created.username(), created.enabled(), created.fullName(), created.email(), created.phone(),
-      created.hourlyCost(),
-      created.password()  
-  );
-}
+    // password returned only here
+    return toResponse(created, created.password());
+  }
 
-@PutMapping("/{id}")
-public UserResponse update(@PathVariable Long id, @RequestBody UpdateUserRequest req) {
-  var updated = userService.updateWithProfile(
-      id,
-      req.fullName(),
-      req.email(),
-      req.phone(),
-      req.enabled(),
-      req.hourlyCost() // ✅ NEW
-  );
+  @PutMapping("/{id}")
+  public UserResponse update(@PathVariable Long id, @RequestBody UpdateUserRequest req) {
 
-  return new UserResponse(
-      updated.id(), updated.username(), updated.enabled(), updated.fullName(), updated.email(), updated.phone(),
-      updated.hourlyCost(), null
-  );
-}
+    var updated = userService.updateWithProfile(
+        id,
+        req.fullName(),
+        req.email(),
+        req.phone(),
+        req.enabled(),
+        req.hourlyCost(),
+        req.yearOfBirth(),
+        req.countyCode(),
+        req.municipalityCode()
+    );
+
+    return toResponse(updated, null);
+  }
+
+  @DeleteMapping("/{id}")
+  @PreAuthorize("hasRole('ADMIN')")
+  public void delete(@PathVariable Long id) {
+    userService.deleteUser(id);
+  }
 }

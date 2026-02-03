@@ -1,7 +1,6 @@
 package com.nordicframtiden.security.model;
 
 import java.math.BigDecimal;
-
 import jakarta.persistence.*;
 
 @Entity
@@ -24,56 +23,48 @@ public class UserProfile {
   @OneToOne(optional = false)
   @JoinColumn(name = "user_id", unique = true)
   private AppUser user;
-  
+
   @Column(name = "hourly_cost", precision = 12, scale = 2)
   private BigDecimal hourlyCost;
-  public Long getId() {
-    return id;
-  }
 
-  public void setId(Long id) {
-    this.id = id;
-  }
+  // ✅ NEW
+  @Column(name = "year_of_birth", nullable = false)
+  private Integer yearOfBirth;
 
-  public String getFullName() {
-    return fullName;
-  }
+  // ✅ NEW (län: 2 digits as string, ex: "01")
+  @Column(name = "county_code", nullable = false, length = 2)
+  private String countyCode;
 
-  public void setFullName(String fullName) {
-    this.fullName = fullName;
-  }
+  // ✅ NEW (kommun: 4 digits as string, ex: "0114")
+  @Column(name = "municipality_code", nullable = false, length = 4)
+  private String municipalityCode;
 
-  public String getEmail() {
-    return email;
-  }
+  // getters/setters...
 
-  public void setEmail(String email) {
-    this.email = email;
-  }
+  public Long getId() { return id; }
+  public void setId(Long id) { this.id = id; }
 
-  public String getPhone() {
-    return phone;
-  }
+  public String getFullName() { return fullName; }
+  public void setFullName(String fullName) { this.fullName = fullName; }
 
-  public void setPhone(String phone) {
-    this.phone = phone;
-  }
+  public String getEmail() { return email; }
+  public void setEmail(String email) { this.email = email; }
 
-  public AppUser getUser() {
-    return user;
-  }
+  public String getPhone() { return phone; }
+  public void setPhone(String phone) { this.phone = phone; }
 
-  public void setUser(AppUser user) {
-    this.user = user;
-  }
+  public AppUser getUser() { return user; }
+  public void setUser(AppUser user) { this.user = user; }
 
-  public BigDecimal getHourlyCost() {
-    return hourlyCost;
-  }
+  public BigDecimal getHourlyCost() { return hourlyCost; }
+  public void setHourlyCost(BigDecimal hourlyCost) { this.hourlyCost = hourlyCost; }
 
-  public void setHourlyCost(BigDecimal hourlyCost) {
-    this.hourlyCost = hourlyCost;
-  }
+  public Integer getYearOfBirth() { return yearOfBirth; }
+  public void setYearOfBirth(Integer yearOfBirth) { this.yearOfBirth = yearOfBirth; }
 
-  
+  public String getCountyCode() { return countyCode; }
+  public void setCountyCode(String countyCode) { this.countyCode = countyCode; }
+
+  public String getMunicipalityCode() { return municipalityCode; }
+  public void setMunicipalityCode(String municipalityCode) { this.municipalityCode = municipalityCode; }
 }

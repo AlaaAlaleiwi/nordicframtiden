@@ -1,6 +1,8 @@
 package com.nordicframtiden.security.service;
 
-import com.nordicframtiden.security.model.*;
+import com.nordicframtiden.security.model.AppUser;
+import com.nordicframtiden.security.model.Role;
+import com.nordicframtiden.security.model.UserProfile;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -9,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.time.Year;
 import java.util.List;
 import java.util.Set;
 
@@ -24,22 +27,9 @@ public class UserService {
     this.profileRepo = profileRepo;
     this.encoder = encoder;
   }
-public DetailedUser getDetailedByUsername(String username) {
-  var u = userRepo.findByUsername(username)
-      .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-  var profile = profileRepo.findByUserId(u.getId()).orElse(null);
+  // ---------- Records ----------
 
-  return new DetailedUser(
-      u.getId(),
-      u.getUsername(),
-      u.isEnabled(),
-      profile != null ? profile.getFullName() : u.getUsername(),
-      profile != null ? profile.getEmail() : null,
-      profile != null ? profile.getPhone() : null,
-      profile != null ? profile.getHourlyCost() : null
-  );
-}
   public record UserRow(
       Long id,
       String username,
@@ -48,11 +38,73 @@ public DetailedUser getDetailedByUsername(String username) {
       String email,
       String phone,
       BigDecimal hourlyCost,
-      String password) {
-  }
+      Integer yearOfBirth,
+      String countyCode,
+      String municipalityCode,
+      String password
+  ) {}
 
   public record DetailedUser(
-      Long id, String username, boolean enabled, String fullName, String email, String phone, BigDecimal hourlyCost) {
+      Long id,
+      String username,
+      boolean enabled,
+      String fullName,
+      String email,
+      String phone,
+      BigDecimal hourlyCost,
+      Integer yearOfBirth,
+      String countyCode,
+      String municipalityCode
+  ) {}
+
+  // ---------- Validation helpers ----------
+
+  private static void validateYear(Integer yearOfBirth) {
+    if (yearOfBirth == null) throw new IllegalArgumentException("yearOfBirth is required");
+    int now = Year.now().getValue();
+    if (yearOfBirth < 1900 || yearOfBirth > now) throw new IllegalArgumentException("Invalid yearOfBirth");
+  }
+
+  private static void validateCodes(String countyCode, String municipalityCode) {
+    if (countyCode == null || countyCode.isBlank()) throw new IllegalArgumentException("countyCode is required");
+    if (municipalityCode == null || municipalityCode.isBlank()) throw new IllegalArgumentException("municipalityCode is required");
+
+    String cc = countyCode.trim();
+    String mc = municipalityCode.trim();
+
+    if (!cc.matches("\\d{2}")) throw new IllegalArgumentException("Invalid countyCode");
+    if (!mc.matches("\\d{4}")) throw new IllegalArgumentException("Invalid municipalityCode");
+
+    // Optional but recommended consistency check:
+    if (!mc.startsWith(cc)) {
+      throw new IllegalArgumentException("municipalityCode must start with countyCode");
+    }
+  }
+
+  // ---------- Read ----------
+public UserProfile getProfileByUserId(Long userId) {
+  return profileRepo.findByUserId(userId)
+      .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+}
+
+  public DetailedUser getDetailedByUsername(String username) {
+    var u = userRepo.findByUsername(username)
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+    var profile = profileRepo.findByUserId(u.getId()).orElse(null);
+
+    return new DetailedUser(
+        u.getId(),
+        u.getUsername(),
+        u.isEnabled(),
+        profile != null ? profile.getFullName() : u.getUsername(),
+        profile != null ? profile.getEmail() : null,
+        profile != null ? profile.getPhone() : null,
+        profile != null ? profile.getHourlyCost() : null,
+        profile != null ? profile.getYearOfBirth() : null,
+        profile != null ? profile.getCountyCode() : null,
+        profile != null ? profile.getMunicipalityCode() : null
+    );
   }
 
   public DetailedUser getDetailedById(Long id) {
@@ -66,7 +118,11 @@ public DetailedUser getDetailedByUsername(String username) {
               profile != null ? profile.getFullName() : u.getUsername(),
               profile != null ? profile.getEmail() : null,
               profile != null ? profile.getPhone() : null,
-              profile != null ? profile.getHourlyCost() : null);
+              profile != null ? profile.getHourlyCost() : null,
+              profile != null ? profile.getYearOfBirth() : null,
+              profile != null ? profile.getCountyCode() : null,
+              profile != null ? profile.getMunicipalityCode() : null
+          );
         })
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
   }
@@ -82,25 +138,45 @@ public DetailedUser getDetailedByUsername(String username) {
           p == null ? null : p.getEmail(),
           p == null ? null : p.getPhone(),
           p == null ? null : p.getHourlyCost(),
-          null);
+          p == null ? null : p.getYearOfBirth(),
+          p == null ? null : p.getCountyCode(),
+          p == null ? null : p.getMunicipalityCode(),
+          null
+      );
     }).toList();
   }
 
+  // ---------- Create ----------
+
   @Transactional
-  public UserRow createWithProfile(Role role, boolean enabled, String fullName, String email, String phone,
-      BigDecimal hourlyCost) {
+  public UserRow createWithProfile(
+      Role role,
+      boolean enabled,
+      String fullName,
+      String email,
+      String phone,
+      BigDecimal hourlyCost,
+      Integer yearOfBirth,
+      String countyCode,
+      String municipalityCode
+  ) {
 
     if (role != Role.USER && role != Role.STAFF) {
       throw new IllegalArgumentException("Only USER or STAFF can be created here");
     }
-    if (profileRepo.existsByEmail(email))
-      throw new IllegalArgumentException("Email already exists");
-    if (profileRepo.existsByPhone(phone))
-      throw new IllegalArgumentException("Phone already exists");
+
+    if (fullName == null || fullName.isBlank()) throw new IllegalArgumentException("fullName is required");
+    if (email == null || email.isBlank()) throw new IllegalArgumentException("email is required");
+    if (phone == null || phone.isBlank()) throw new IllegalArgumentException("phone is required");
+
+    validateYear(yearOfBirth);
+    validateCodes(countyCode, municipalityCode);
+
+    if (profileRepo.existsByEmail(email)) throw new IllegalArgumentException("Email already exists");
+    if (profileRepo.existsByPhone(phone)) throw new IllegalArgumentException("Phone already exists");
 
     String username = generateUniqueUsername(fullName);
-
-    String rawPassword = generatePassword(12); // TODO: email this to the user
+    String rawPassword = generatePassword(12);
 
     AppUser u = new AppUser();
     u.setUsername(username);
@@ -110,10 +186,15 @@ public DetailedUser getDetailedByUsername(String username) {
     u = userRepo.save(u);
 
     UserProfile p = new UserProfile();
-    p.setFullName(fullName);
-    p.setEmail(email);
-    p.setPhone(phone);
-    p.setHourlyCost(hourlyCost); // ✅ NEW
+    p.setFullName(fullName.trim());
+    p.setEmail(email.trim());
+    p.setPhone(phone.trim());
+    p.setHourlyCost(hourlyCost);
+
+    p.setYearOfBirth(yearOfBirth);
+    p.setCountyCode(countyCode.trim());
+    p.setMunicipalityCode(municipalityCode.trim());
+
     p.setUser(u);
     profileRepo.save(p);
 
@@ -125,8 +206,14 @@ public DetailedUser getDetailedByUsername(String username) {
         p.getEmail(),
         p.getPhone(),
         p.getHourlyCost(),
-        rawPassword);
+        p.getYearOfBirth(),
+        p.getCountyCode(),
+        p.getMunicipalityCode(),
+        rawPassword
+    );
   }
+
+  // ---------- Update ----------
 
   @Transactional
   public UserRow updateWithProfile(
@@ -135,7 +222,10 @@ public DetailedUser getDetailedByUsername(String username) {
       String email,
       String phone,
       Boolean enabled,
-      BigDecimal hourlyCost // ✅ NEW
+      BigDecimal hourlyCost,
+      Integer yearOfBirth,
+      String countyCode,
+      String municipalityCode
   ) {
     AppUser u = userRepo.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -143,29 +233,44 @@ public DetailedUser getDetailedByUsername(String username) {
       throw new IllegalArgumentException("Cannot edit ADMIN from /api/users");
     }
 
-    if (enabled != null)
-      u.setEnabled(enabled);
+    if (enabled != null) u.setEnabled(enabled);
 
-    UserProfile p = profileRepo.findByUserId(id).orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+    UserProfile p = profileRepo.findByUserId(id)
+        .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
 
-    if (fullName != null && !fullName.isBlank())
-      p.setFullName(fullName);
+    if (fullName != null && !fullName.isBlank()) p.setFullName(fullName.trim());
 
     if (email != null && !email.isBlank() && !email.equalsIgnoreCase(p.getEmail())) {
-      if (profileRepo.existsByEmail(email))
-        throw new IllegalArgumentException("Email already exists");
-      p.setEmail(email);
+      if (profileRepo.existsByEmail(email)) throw new IllegalArgumentException("Email already exists");
+      p.setEmail(email.trim());
     }
 
     if (phone != null && !phone.isBlank() && !phone.equals(p.getPhone())) {
-      if (profileRepo.existsByPhone(phone))
-        throw new IllegalArgumentException("Phone already exists");
-      p.setPhone(phone);
+      if (profileRepo.existsByPhone(phone)) throw new IllegalArgumentException("Phone already exists");
+      p.setPhone(phone.trim());
     }
 
-    // ✅ NEW
     if (hourlyCost != null) {
       p.setHourlyCost(hourlyCost);
+    }
+
+    // ✅ keep required fields always valid
+    if (yearOfBirth != null) {
+      validateYear(yearOfBirth);
+      p.setYearOfBirth(yearOfBirth);
+    }
+
+    // if either code is provided, require both and validate relationship
+    boolean anyCodeProvided =
+        (countyCode != null && !countyCode.isBlank()) ||
+        (municipalityCode != null && !municipalityCode.isBlank());
+
+    if (anyCodeProvided) {
+      String nextCounty = (countyCode == null || countyCode.isBlank()) ? p.getCountyCode() : countyCode.trim();
+      String nextMunicipality = (municipalityCode == null || municipalityCode.isBlank()) ? p.getMunicipalityCode() : municipalityCode.trim();
+      validateCodes(nextCounty, nextMunicipality);
+      p.setCountyCode(nextCounty);
+      p.setMunicipalityCode(nextMunicipality);
     }
 
     profileRepo.save(p);
@@ -179,8 +284,14 @@ public DetailedUser getDetailedByUsername(String username) {
         p.getEmail(),
         p.getPhone(),
         p.getHourlyCost(),
-        null);
+        p.getYearOfBirth(),
+        p.getCountyCode(),
+        p.getMunicipalityCode(),
+        null
+    );
   }
+
+  // ---------- Delete ----------
 
   @Transactional
   public void deleteUser(Long id) {
@@ -194,6 +305,8 @@ public DetailedUser getDetailedByUsername(String username) {
     userRepo.delete(u);
   }
 
+  // ---------- Username + Password helpers ----------
+
   private String generateUniqueUsername(String fullName) {
     String base = (fullName == null ? "user" : fullName)
         .trim()
@@ -201,8 +314,7 @@ public DetailedUser getDetailedByUsername(String username) {
         .replaceAll("[^a-z0-9]+", ".")
         .replaceAll("^\\.|\\.$", "");
 
-    if (base.isBlank())
-      base = "user";
+    if (base.isBlank()) base = "user";
 
     String candidate = base;
     int i = 1;

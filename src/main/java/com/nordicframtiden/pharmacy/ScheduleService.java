@@ -2,14 +2,15 @@ package com.nordicframtiden.pharmacy;
 
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
-import com.nordicframtiden.security.repo.UserProfileRepository;
-
+import com.nordicframtiden.security.service.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.Authentication;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Service
@@ -18,18 +19,29 @@ public class ScheduleService {
     private final ScheduleShiftRepository shiftRepo;
     private final PharmacyRepository pharmacyRepo;
     private final AppUserRepository userRepo;
-
-    private final UserProfileRepository profileRepo;
+    private final UserService userService; // ✅ use service
 
     public ScheduleService(
             ScheduleShiftRepository shiftRepo,
             PharmacyRepository pharmacyRepo,
             AppUserRepository userRepo,
-            UserProfileRepository profileRepo) {
+            UserService userService) {
         this.shiftRepo = shiftRepo;
         this.pharmacyRepo = pharmacyRepo;
         this.userRepo = userRepo;
-        this.profileRepo = profileRepo;
+        this.userService = userService;
+    }
+
+    public List<ScheduleShift> listForUser(Long userId, Instant start, Instant end) {
+        if (userId == null)
+            throw new IllegalArgumentException("userId is required");
+        if (start == null || end == null)
+            throw new IllegalArgumentException("start/end are required");
+
+        OffsetDateTime startAt = start.atOffset(ZoneOffset.UTC);
+        OffsetDateTime endAt = end.atOffset(ZoneOffset.UTC);
+
+        return shiftRepo.findInRange(startAt, endAt, null, userId);
     }
 
     public List<ScheduleShift> listRange(OffsetDateTime start, OffsetDateTime end, Long pharmacyId, Long userId) {
@@ -49,9 +61,8 @@ public class ScheduleService {
             OffsetDateTime startAt, OffsetDateTime endAt, String note) {
         validateRange(startAt, endAt);
 
-        if (pharmacyId == null) {
+        if (pharmacyId == null)
             throw new IllegalArgumentException("pharmacyId is required");
-        }
 
         AppUser user = userRepo.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -59,11 +70,14 @@ public class ScheduleService {
         Pharmacy pharmacy = pharmacyRepo.findById(pharmacyId)
                 .orElseThrow(() -> new IllegalArgumentException("Pharmacy not found"));
 
-        var profile = profileRepo.findByUserId(user.getId()).orElse(null);
-
-        BigDecimal hourly = (profile != null && profile.getHourlyCost() != null)
-                ? profile.getHourlyCost()
-                : BigDecimal.ZERO;
+        // ✅ get hourlyCost through userService
+        BigDecimal hourly = BigDecimal.ZERO;
+        try {
+            var profile = userService.getProfileByUserId(user.getId());
+            if (profile.getHourlyCost() != null)
+                hourly = profile.getHourlyCost();
+        } catch (Exception ignored) {
+        }
 
         ScheduleShift s = new ScheduleShift();
         s.setPharmacy(pharmacy);
@@ -89,7 +103,6 @@ public class ScheduleService {
         ScheduleShift s = shiftRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Shift not found"));
 
-        // if provided -> update
         if (pharmacyId != null) {
             Pharmacy pharmacy = pharmacyRepo.findById(pharmacyId)
                     .orElseThrow(() -> new IllegalArgumentException("Pharmacy not found"));
@@ -107,7 +120,6 @@ public class ScheduleService {
         if (endAt != null)
             s.setEndAt(endAt);
 
-        // validate after changes
         validateRange(s.getStartAt(), s.getEndAt());
 
         if (note != null)
