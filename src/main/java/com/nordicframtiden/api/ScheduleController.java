@@ -2,6 +2,9 @@ package com.nordicframtiden.api;
 
 import com.nordicframtiden.pharmacy.ScheduleService;
 import com.nordicframtiden.pharmacy.ScheduleShift;
+import com.nordicframtiden.security.model.UserProfile;
+import com.nordicframtiden.security.repo.UserProfileRepository;
+
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -15,9 +18,11 @@ import java.util.List;
 public class ScheduleController {
 
   private final ScheduleService service;
+  private final UserProfileRepository userProfileRepository;
 
-  public ScheduleController(ScheduleService service) {
+  public ScheduleController(ScheduleService service, UserProfileRepository userProfileRepository) {
     this.service = service;
+    this.userProfileRepository = userProfileRepository;
   }
 
   public record EventDto(
@@ -28,42 +33,75 @@ public class ScheduleController {
       String userLabel,
       OffsetDateTime startAt,
       OffsetDateTime endAt,
-      String note
-  ) {
-    static EventDto from(ScheduleShift s) {
+      String note) {
+    static EventDto from(ScheduleShift s, String username) {
       Long pid = s.getPharmacy() == null ? null : s.getPharmacy().getId();
       String pname = s.getPharmacy() == null ? null : s.getPharmacy().getName();
+
       return new EventDto(
           s.getId(),
           pid,
           pname,
           s.getUser().getId(),
-          "@" + s.getUser().getUsername(),
+          username,
           s.getStartAt(),
           s.getEndAt(),
-          s.getNote()
-      );
+          s.getNote());
     }
   }
 
   // ✅ pharmacist gets own schedule
   @GetMapping("/me")
   public List<EventDto> mySchedules(@RequestParam OffsetDateTime start,
-                                   @RequestParam OffsetDateTime end,
-                                   Authentication auth) {
-    return service.listForCurrentUser(auth, start, end)
-        .stream().map(EventDto::from).toList();
+      @RequestParam OffsetDateTime end,
+      Authentication auth) {
+
+    var res = service
+        .listForCurrentUser(auth, start, end)
+        .stream()
+        .map(s -> {
+          Long pid = s.getPharmacy() == null ? null : s.getPharmacy().getId();
+          String pname = s.getPharmacy() == null ? null : s.getPharmacy().getName();
+          var u = userProfileRepository.findByUserId(s.getUser().getId());
+          return new EventDto(
+              s.getId(),
+              pid,
+              pname,
+              s.getUser().getId(),
+              u.get().getFullName(),
+              s.getStartAt(),
+              s.getEndAt(),
+              s.getNote());
+
+        })
+        .toList();
+
+    return res;
   }
 
   // ✅ admin listing
   @GetMapping
   @PreAuthorize("hasRole('ADMIN')")
   public List<EventDto> list(@RequestParam OffsetDateTime start,
-                             @RequestParam OffsetDateTime end,
-                             @RequestParam(required = false) Long pharmacyId,
-                             @RequestParam(required = false) Long userId) {
+      @RequestParam OffsetDateTime end,
+      @RequestParam(required = false) Long pharmacyId,
+      @RequestParam(required = false) Long userId) {
     return service.listRange(start, end, pharmacyId, userId)
-        .stream().map(EventDto::from).toList();
+        .stream().map(s -> {
+          Long pid = s.getPharmacy() == null ? null : s.getPharmacy().getId();
+          String pname = s.getPharmacy() == null ? null : s.getPharmacy().getName();
+          var u = userProfileRepository.findByUserId(s.getUser().getId());
+          return new EventDto(
+              s.getId(),
+              pid,
+              pname,
+              s.getUser().getId(),
+              u.get().getFullName(),
+              s.getStartAt(),
+              s.getEndAt(),
+              s.getNote());
+
+        }).toList();
   }
 
   public record CreateRequest(
@@ -71,8 +109,8 @@ public class ScheduleController {
       Long userId,
       OffsetDateTime startAt,
       OffsetDateTime endAt,
-      String note
-  ) {}
+      String note) {
+  }
 
   // ✅ THIS is what your UI is calling
   @PostMapping
@@ -83,8 +121,20 @@ public class ScheduleController {
         req.userId(),
         req.startAt(),
         req.endAt(),
-        req.note()
-    );
-    return EventDto.from(created);
+        req.note());
+
+    Long pid = created.getPharmacy() == null ? null : created.getPharmacy().getId();
+    String pname = created.getPharmacy() == null ? null : created.getPharmacy().getName();
+    var u = userProfileRepository.findByUserId(created.getUser().getId());
+    return new EventDto(
+        created.getId(),
+        pid,
+        pname,
+        created.getUser().getId(),
+        u.get().getFullName(),
+        created.getStartAt(),
+        created.getEndAt(),
+        created.getNote());
+
   }
 }

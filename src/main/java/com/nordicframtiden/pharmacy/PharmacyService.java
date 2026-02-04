@@ -3,6 +3,7 @@ package com.nordicframtiden.pharmacy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -21,15 +22,17 @@ public class PharmacyService {
   @Transactional
   public Pharmacy create(PharmacyCreateRequest req) {
     String name = safe(req.name());
-    if (name.isEmpty()) throw new IllegalArgumentException("Name is required");
-    if (repo.existsByNameIgnoreCase(name)) throw new IllegalArgumentException("Pharmacy name already exists");
+    if (name.isEmpty())
+      throw new IllegalArgumentException("Name is required");
+    if (repo.existsByNameIgnoreCase(name))
+      throw new IllegalArgumentException("Pharmacy name already exists");
 
     Pharmacy p = new Pharmacy();
     p.setName(name);
     p.setEmail(safe(req.email()));
     p.setPhone(safe(req.phone()));
     p.setAddress(safe(req.address()));
-
+    p.setHourlyCost(req.hourlyCost());
     p.setContactName(safe(req.contactName()));
     p.setContactEmail(safe(req.contactEmail()));
     p.setContactPhone(safe(req.contactPhone()));
@@ -43,19 +46,29 @@ public class PharmacyService {
     Pharmacy p = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Pharmacy not found"));
 
     if (req.name() != null && !safe(req.name()).isEmpty() && !safe(req.name()).equalsIgnoreCase(p.getName())) {
-      if (repo.existsByNameIgnoreCase(req.name())) throw new IllegalArgumentException("Pharmacy name already exists");
+      if (repo.existsByNameIgnoreCase(req.name()))
+        throw new IllegalArgumentException("Pharmacy name already exists");
       p.setName(safe(req.name()));
     }
+    if (req.hourlyCost() != null) {
+      p.setHourlyCost(req.hourlyCost());
+    }
+    if (req.email() != null)
+      p.setEmail(safe(req.email()));
+    if (req.phone() != null)
+      p.setPhone(safe(req.phone()));
+    if (req.address() != null)
+      p.setAddress(safe(req.address()));
 
-    if (req.email() != null) p.setEmail(safe(req.email()));
-    if (req.phone() != null) p.setPhone(safe(req.phone()));
-    if (req.address() != null) p.setAddress(safe(req.address()));
+    if (req.contactName() != null)
+      p.setContactName(safe(req.contactName()));
+    if (req.contactEmail() != null)
+      p.setContactEmail(safe(req.contactEmail()));
+    if (req.contactPhone() != null)
+      p.setContactPhone(safe(req.contactPhone()));
 
-    if (req.contactName() != null) p.setContactName(safe(req.contactName()));
-    if (req.contactEmail() != null) p.setContactEmail(safe(req.contactEmail()));
-    if (req.contactPhone() != null) p.setContactPhone(safe(req.contactPhone()));
-
-    if (req.enabled() != null) p.setEnabled(req.enabled());
+    if (req.enabled() != null)
+      p.setEnabled(req.enabled());
 
     return repo.save(p);
   }
@@ -85,8 +98,9 @@ public class PharmacyService {
       String contactName,
       String contactEmail,
       String contactPhone,
-      Boolean enabled
-  ) {}
+      BigDecimal hourlyCost, // ✅
+      Boolean enabled) {
+  }
 
   public record PharmacyUpdateRequest(
       String name,
@@ -96,8 +110,10 @@ public class PharmacyService {
       String contactName,
       String contactEmail,
       String contactPhone,
-      Boolean enabled
-  ) {}
+      BigDecimal hourlyCost, // ✅
+      Boolean enabled) {
+  }
 
-  public record PharmacyStats(long enabled, long disabled, long total) {}
+  public record PharmacyStats(long enabled, long disabled, long total) {
+  }
 }
