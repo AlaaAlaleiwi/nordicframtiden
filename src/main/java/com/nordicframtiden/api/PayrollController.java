@@ -1,5 +1,6 @@
 package com.nordicframtiden.api;
 
+import com.nordicframtiden.company.StaffScheduleService;
 import com.nordicframtiden.pharmacy.ScheduleService;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.service.UserService;
@@ -17,17 +18,19 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/payroll")
-@PreAuthorize("hasAnyRole('ADMIN','USER')")
+@PreAuthorize("hasAnyRole('ADMIN','USER','STAFF')")
 public class PayrollController {
 
   private final UserService userService;
   private final ScheduleService scheduleService;
   private final PayrollService payrollService;
+  private final StaffScheduleService staffScheduleService;
 
-  public PayrollController(UserService userService, ScheduleService scheduleService, PayrollService payrollService) {
+  public PayrollController(UserService userService, ScheduleService scheduleService, PayrollService payrollService,StaffScheduleService staffScheduleService) {
     this.userService = userService;
     this.scheduleService = scheduleService;
     this.payrollService = payrollService;
+    this.staffScheduleService = staffScheduleService;
   }
 
   public record SalaryRow(
@@ -45,7 +48,50 @@ public class PayrollController {
       @RequestParam int month) {
     return payrollService.netSalaryForUserMonth(userId, year, month);
   }
+@GetMapping("/staff-salaries")
+@PreAuthorize("hasRole('ADMIN')")
+public List<SalaryRow> staffSalaries(
+    @RequestParam OffsetDateTime start,
+    @RequestParam OffsetDateTime end,
+    @RequestParam(required = false) Long userId
+) {
+  var staffUsers = userService.listDetailedByRole(Role.STAFF);
 
+  // ✅ HÄMTA STAFF-SHIFTS HÄR (från din StaffScheduleService / repo)
+  var shifts = staffScheduleService.listRange(start, end, userId);
+
+  Map<Long, Double> hoursByUser = new HashMap<>();
+  for (var s : shifts) {
+    if (s.getUser() == null || s.getStartAt() == null || s.getEndAt() == null) continue;
+    double hours = Duration.between(s.getStartAt(), s.getEndAt()).toMinutes() / 60.0;
+    if (hours <= 0) continue;
+    hoursByUser.merge(s.getUser().getId(), hours, Double::sum);
+  }
+
+  List<SalaryRow> out = new ArrayList<>();
+  for (var u : staffUsers) {
+    double totalHours = round2(hoursByUser.getOrDefault(u.id(), 0.0));
+
+    BigDecimal hourly = u.hourlyCost() != null ? u.hourlyCost() : BigDecimal.ZERO;
+    BigDecimal salary = hourly.multiply(BigDecimal.valueOf(totalHours)).setScale(2, RoundingMode.HALF_UP);
+
+    String name = (u.fullName() != null && !u.fullName().isBlank())
+        ? u.fullName()
+        : (u.username() != null ? u.username() : ("User #" + u.id()));
+
+    out.add(new SalaryRow(
+        u.id(),
+        name,
+        u.email(),
+        hourly.setScale(2, RoundingMode.HALF_UP),
+        totalHours,
+        salary
+    ));
+  }
+
+  out.sort(Comparator.comparing(SalaryRow::totalSalary).reversed());
+  return out;
+}
   /**
    * GET /api/payroll/salaries?start=2026-01-01T00:00:00Z&end=2026-02-01T00:00:00Z
    * Optional: &pharmacyId=1
