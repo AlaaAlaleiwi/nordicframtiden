@@ -32,7 +32,52 @@ public class PayrollService {
     this.scheduleService = scheduleService;
     this.staffScheduleService = staffScheduleService;
 }
+public NetSalaryResponse netSalaryForUserMonth(Long userId, int year, int month, String role) {
+  if ("STAFF".equalsIgnoreCase(role)) {
+    return netSalaryForStaffMonth(userId, year, month);
+  }
+  return netSalaryForUserMonth(userId, year, month); // your existing USER one
+}
 
+public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month) {
+  // Same logic as netSalaryForUserMonth but ONLY use staffScheduleService shifts
+  var user = userService.getDetailedById(userId);
+  var profile = userService.getProfileByUserId(userId);
+
+  var range = monthRangeUTC(year, month);
+  var shifts = staffScheduleService.listForUser(userId, range.start(), range.end());
+
+  BigDecimal totalHours = BigDecimal.ZERO;
+  for (var s : shifts) {
+    totalHours = totalHours.add(hoursBetween(s.getStartAt().toInstant(), s.getEndAt().toInstant()));
+  }
+
+  BigDecimal gross = totalHours.multiply(profile.getHourlyCost());
+
+  int taxYear = year;
+  int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
+  int tableNumber = taxService.resolveTableNumber(profile.getMunicipalityCode(), taxYear);
+
+  int grossInt = gross.setScale(0, RoundingMode.HALF_UP).intValue();
+  int taxInt = taxService.lookupPreliminaryTax(taxYear, tableNumber, taxColumn, grossInt);
+
+  BigDecimal tax = BigDecimal.valueOf(taxInt);
+  BigDecimal net = gross.subtract(tax);
+
+  return new NetSalaryResponse(
+      userId,
+      String.format("%04d-%02d", year, month),
+      profile.getHourlyCost(),
+      totalHours.setScale(2, RoundingMode.HALF_UP),
+      gross.setScale(2, RoundingMode.HALF_UP),
+      taxYear,
+      profile.getMunicipalityCode(),
+      tableNumber,
+      taxColumn,
+      tax.setScale(2, RoundingMode.HALF_UP),
+      net.setScale(2, RoundingMode.HALF_UP)
+  );
+}
   public NetSalaryResponse netSalaryForUserMonth(Long userId, int year, int month) {
 
     var user = userService.getDetailedById(userId);
