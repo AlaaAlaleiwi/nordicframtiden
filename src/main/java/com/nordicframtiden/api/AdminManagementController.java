@@ -1,12 +1,14 @@
 package com.nordicframtiden.api;
 
 import com.nordicframtiden.admin.AdminService;
+import com.nordicframtiden.api.UserManagementController.UserResponse;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -66,6 +68,21 @@ public class AdminManagementController {
   /* =========================
      ENDPOINTS
      ========================= */
+ @GetMapping("/me")
+  @PreAuthorize("hasAnyRole('ADMIN')")
+  public AdminResponse me(Authentication auth) {
+    var username = auth.getName();
+    var user = adminService.getDetailedUser(username);
+    return new AdminResponse(
+            user.id(),
+            user.username(),
+            user.enabled(),
+            user.fullName(),
+            user.email(),
+            user.phone(),
+            null
+        );
+  }
 
   @GetMapping
   public List<AdminResponse> list() {
@@ -104,11 +121,13 @@ public class AdminManagementController {
     );
   }
 
+
   @PutMapping("/{id}")
   public AdminResponse update(
       @PathVariable Long id,
       @RequestBody UpdateAdminRequest req
   ) {
+
     var updated = adminService.updateAdminWithProfile(
         id,
         req.username(),

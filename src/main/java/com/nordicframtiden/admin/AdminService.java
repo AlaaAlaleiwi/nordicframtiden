@@ -139,7 +139,11 @@ public class AdminService {
 
     // profile
     AdminProfile profile = adminProfileRepo.findByUserId(u.getId())
-        .orElseThrow(() -> new IllegalArgumentException("Admin profile not found"));
+        .orElseGet(() -> {
+          AdminProfile p = new AdminProfile();
+          p.setUser(u);
+          return p;
+        });
 
     if (fullName != null && !fullName.isBlank())
       profile.setFullName(fullName);
@@ -157,8 +161,6 @@ public class AdminService {
     }
 
     adminProfileRepo.save(profile);
-    u = repo.save(u);
-
     return new AdminRow(
         u.getId(),
         u.getUsername(),
@@ -166,7 +168,7 @@ public class AdminService {
         profile.getFullName(),
         profile.getEmail(),
         profile.getPhone(),
-      null);
+        null);
   }
 
   /*
@@ -225,5 +227,29 @@ public class AdminService {
     }
 
     return username;
+  }
+
+  @Transactional(readOnly = true)
+  public AdminRow getDetailedUser(String username) {
+
+    AppUser u = repo.findByUsername(username)
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+    // Must be ADMIN if we return AdminRow
+    if (u.getRoles() == null || !u.getRoles().contains(Role.ADMIN)) {
+      throw new IllegalArgumentException("User is not an admin");
+    }
+
+    AdminProfile p = adminProfileRepo.findByUserId(u.getId()).orElse(null);
+
+    return new AdminRow(
+        u.getId(),
+        u.getUsername(),
+        u.isEnabled(),
+        p != null ? p.getFullName() : null,
+        p != null ? p.getEmail() : null,
+        p != null ? p.getPhone() : null,
+        null // never expose password
+    );
   }
 }
