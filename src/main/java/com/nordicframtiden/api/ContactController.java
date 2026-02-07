@@ -11,6 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/contact")
+@PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
 public class ContactController {
 
   private final ContactRequestService service;
@@ -73,13 +74,13 @@ public class ContactController {
 
   // ---------- Admin endpoints ----------
   @GetMapping
-  @PreAuthorize("hasRole('ADMIN')")
+   
   public List<ContactResponse> list() {
     return service.list().stream().map(ContactResponse::from).toList();
   }
 
   @GetMapping("/unhandled-count")
-  @PreAuthorize("hasRole('ADMIN')")
+ 
   public long unhandledCount() {
     return service.unreadCount();
   }
@@ -94,7 +95,7 @@ public class ContactController {
   }
 
   @DeleteMapping("/{id}")
-  @PreAuthorize("hasRole('ADMIN')")
+ 
   public void delete(@PathVariable Long id) {
     service.delete(id);
   }

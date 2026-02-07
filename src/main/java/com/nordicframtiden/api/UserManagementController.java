@@ -14,7 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
-@PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
+@PreAuthorize("hasAnyRole('STAFF','ADMIN')")
 public class UserManagementController {
 
   private final UserService userService;
@@ -161,5 +161,14 @@ public class UserManagementController {
   @PreAuthorize("hasRole('ADMIN')")
   public void delete(@PathVariable Long id) {
     userService.deleteUser(id);
+  }
+
+    // POST /api/users/{id}/reset-password  (ADMIN only)
+  @PostMapping("/{id}/reset-password")
+  @PreAuthorize("hasRole('ADMIN')")
+  public UserResponse resetPassword(@PathVariable Long id) {
+    var updated = userService.resetPassword(id);
+    // password returned here
+    return toResponse(updated, updated.password());
   }
 }

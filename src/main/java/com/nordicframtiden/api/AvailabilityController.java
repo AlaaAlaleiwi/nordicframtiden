@@ -12,6 +12,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/availability")
+@PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
 public class AvailabilityController {
 
   private final AvailabilityService service;
@@ -72,13 +73,13 @@ public class AvailabilityController {
   }
 
   @GetMapping("/me")
-  @PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
+ 
   public List<AvailabilityDto> my(Authentication auth) {
     return service.my(auth).stream().map(this::toDto).toList();
   }
 
   @PostMapping("/me")
-  @PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
+ 
   public AvailabilityDto create(Authentication auth, @RequestBody CreateReq req) {
     var type = AvailabilityRequest.Type.valueOf(req.type());
     var created = service.createForMe(auth, type, req.startDate(), req.endDate(), req.note());
@@ -86,19 +87,19 @@ public class AvailabilityController {
   }
 
   @GetMapping
-  @PreAuthorize("hasRole('ADMIN')")
+ 
   public List<AvailabilityDto> all() {
     return service.all().stream().map(this::toDto).toList();
   }
 
   @PatchMapping("/{id}/status")
-  @PreAuthorize("hasRole('ADMIN')") // ✅ simplest
+ 
   public void updateStatus(@PathVariable Long id, @RequestBody StatusUpdateRequest req) {
     service.setStatus(id, req.status());   // ✅ enum type matches
   }
 
   @GetMapping("/range")
-  @PreAuthorize("hasRole('ADMIN')")
+ 
   public List<AvailabilityRow> range(@RequestParam LocalDate start, @RequestParam LocalDate end) {
     return service.getApprovedOverlapping(start, end);
   }

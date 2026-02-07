@@ -2,7 +2,6 @@ package com.nordicframtiden.api;
 
 import com.nordicframtiden.pharmacy.ScheduleService;
 import com.nordicframtiden.pharmacy.ScheduleShift;
-import com.nordicframtiden.security.model.UserProfile;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -14,7 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/schedules")
-@PreAuthorize("hasAnyRole('ADMIN','USER')")
+@PreAuthorize("hasAnyRole('ADMIN','STAFF')")
 public class ScheduleController {
 
   private final ScheduleService service;
@@ -81,7 +80,6 @@ public class ScheduleController {
 
   // ✅ admin listing
   @GetMapping
-  @PreAuthorize("hasRole('ADMIN')")
   public List<EventDto> list(@RequestParam OffsetDateTime start,
       @RequestParam OffsetDateTime end,
       @RequestParam(required = false) Long pharmacyId,
@@ -114,7 +112,6 @@ public class ScheduleController {
 
   // ✅ THIS is what your UI is calling
   @PostMapping
-  @PreAuthorize("hasRole('ADMIN')")
   public EventDto create(@RequestBody CreateRequest req) {
     var created = service.create(
         req.pharmacyId(),

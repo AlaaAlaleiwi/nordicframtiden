@@ -56,7 +56,7 @@ public class StaffScheduleController {
 
   /** ✅ admin listing */
   @GetMapping
-  @PreAuthorize("hasRole('ADMIN')")
+ 
   public List<EventDto> list(
       @RequestParam OffsetDateTime start,
       @RequestParam OffsetDateTime end,
@@ -80,21 +80,21 @@ public class StaffScheduleController {
   ) {}
 
   @PostMapping
-  @PreAuthorize("hasRole('ADMIN')")
+   
   public EventDto create(@RequestBody CreateRequest req) {
     var created = service.create(req.userId(), req.startAt(), req.endAt(), req.note());
     return EventDto.from(created);
   }
 
   @PutMapping("/{id}")
-  @PreAuthorize("hasRole('ADMIN')")
+  
   public EventDto update(@PathVariable Long id, @RequestBody UpdateRequest req) {
     var updated = service.update(id, req.userId(), req.startAt(), req.endAt(), req.note());
     return EventDto.from(updated);
   }
 
   @DeleteMapping("/{id}")
-  @PreAuthorize("hasRole('ADMIN')")
+   
   public void delete(@PathVariable Long id) {
     service.delete(id);
   }

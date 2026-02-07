@@ -33,10 +33,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
 
-                        .requestMatchers("/api/admins/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admins/**").hasAnyRole("ADMIN","STAFF")
 
                         // ✅ allow pharmacists (USER) to access their own schedule endpoint
-                        .requestMatchers("/api/schedules/me").hasAnyRole("ADMIN", "USER")
+                        .requestMatchers("/api/schedules/me").hasAnyRole("ADMIN", "USER","STAFF")
 
                         // ✅ keep admin-only schedule listing/CRUD rules if you want
                         .requestMatchers("/api/schedules/**").hasAnyRole("ADMIN", "STAFF") // or ADMIN only if that's

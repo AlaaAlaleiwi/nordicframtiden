@@ -4,7 +4,6 @@ import com.nordicframtiden.company.StaffShift;
 import com.nordicframtiden.company.StaffShiftRepository;
 import com.nordicframtiden.pharmacy.ScheduleShift;
 import com.nordicframtiden.pharmacy.ScheduleShiftRepository;
-import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;

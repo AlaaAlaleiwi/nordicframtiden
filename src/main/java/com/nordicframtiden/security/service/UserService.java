@@ -305,6 +305,39 @@ public UserProfile getProfileByUserId(Long userId) {
     userRepo.delete(u);
   }
 
+
+    @Transactional
+  public UserRow resetPassword(Long id) {
+    AppUser u = userRepo.findById(id)
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+    // block admins here as well (same policy as update/delete)
+    if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
+      throw new IllegalArgumentException("Cannot reset ADMIN password from /api/users");
+    }
+
+    // generate new password + update hash
+    String rawPassword = generatePassword(12);
+    u.setPasswordHash(encoder.encode(rawPassword));
+    userRepo.save(u);
+
+    // keep profile data in response (if missing profile, still return something)
+    UserProfile p = profileRepo.findByUserId(u.getId()).orElse(null);
+
+    return new UserRow(
+        u.getId(),
+        u.getUsername(),
+        u.isEnabled(),
+        p != null ? p.getFullName() : null,
+        p != null ? p.getEmail() : null,
+        p != null ? p.getPhone() : null,
+        p != null ? p.getHourlyCost() : null,
+        p != null ? p.getYearOfBirth() : null,
+        p != null ? p.getCountyCode() : null,
+        p != null ? p.getMunicipalityCode() : null,
+        rawPassword
+    );
+  }
   // ---------- Username + Password helpers ----------
 
   private String generateUniqueUsername(String fullName) {

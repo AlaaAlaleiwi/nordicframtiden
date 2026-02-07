@@ -1,7 +1,6 @@
 package com.nordicframtiden.api;
 
 import com.nordicframtiden.admin.AdminService;
-import com.nordicframtiden.api.UserManagementController.UserResponse;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
 
@@ -15,7 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/admins")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
 public class AdminManagementController {
 
   private final AdminService adminService;
@@ -74,7 +73,6 @@ public class AdminManagementController {
      ENDPOINTS
      ========================= */
  @GetMapping("/me")
-  @PreAuthorize("hasAnyRole('ADMIN')")
   public AdminResponse me(Authentication auth) {
     var username = auth.getName();
     var user = adminService.getDetailedUser(username);
