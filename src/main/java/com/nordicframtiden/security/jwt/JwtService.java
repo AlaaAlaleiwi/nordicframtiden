@@ -22,7 +22,8 @@ public class JwtService {
   public JwtService(
       @Value("${app.jwt.secret}") String secret,
       @Value("${app.jwt.issuer}") String issuer,
-      @Value("${app.jwt.accessTokenMinutes}") long accessTokenMinutes) {
+      @Value("${app.jwt.accessTokenMinutes}") long accessTokenMinutes
+  ) {
     this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     this.issuer = issuer;
     this.accessTokenMinutes = accessTokenMinutes;
@@ -37,7 +38,22 @@ public class JwtService {
         .setSubject(subject)
         .setIssuedAt(Date.from(now))
         .setExpiration(Date.from(exp))
-        .addClaims(claims)
+        .addClaims(claims) // roles + perms go here
+        .signWith(key, SignatureAlgorithm.HS256)
+        .compact();
+  }
+
+  public String generateRefreshToken(String subject, Map<String, Object> claims) {
+    Instant now = Instant.now();
+    Instant exp = now.plus(30, ChronoUnit.DAYS);
+
+    return Jwts.builder()
+        .setIssuer(issuer)
+        .setSubject(subject)
+        .setIssuedAt(Date.from(now))
+        .setExpiration(Date.from(exp))
+        .addClaims(claims)               // ✅ include roles/perms (optional but ok)
+        .claim("type", "refresh")
         .signWith(key, SignatureAlgorithm.HS256)
         .compact();
   }
@@ -54,22 +70,8 @@ public class JwtService {
     return parse(token).getBody().getSubject();
   }
 
-  public String generateRefreshToken(String subject, Map<String, Object> claims) {
-    Instant now = Instant.now();
-    Instant exp = now.plus(30, ChronoUnit.DAYS);
-
-    return Jwts.builder()
-        .setIssuer(issuer)
-        .setSubject(subject)
-        .setIssuedAt(Date.from(now))
-        .setExpiration(Date.from(exp))
-        .addClaims(claims)              // ✅ INCLUDE ROLES
-        .claim("type", "refresh")
-        .signWith(key, SignatureAlgorithm.HS256)
-        .compact();
-}
-public boolean isRefreshToken(String token) {
+  public boolean isRefreshToken(String token) {
     Claims claims = parse(token).getBody();
     return "refresh".equals(claims.get("type"));
-}
+  }
 }

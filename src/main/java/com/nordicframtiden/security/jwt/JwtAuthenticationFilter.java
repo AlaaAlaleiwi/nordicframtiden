@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 @Component
@@ -40,7 +42,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     String token = resolveToken(request);
-
     if (token == null) {
       chain.doFilter(request, response);
       return;
@@ -50,27 +51,42 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       Claims claims = jwtService.parse(token).getBody();
       String username = claims.getSubject();
 
-      @SuppressWarnings("unchecked")
-      List<String> roles = (List<String>) claims.get("roles");
-
-      var authorities = roles == null
-          ? List.<SimpleGrantedAuthority>of()
-          : roles.stream().map(SimpleGrantedAuthority::new).toList();
+      var authorities = buildAuthorities(claims);
 
       var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
-
-      // ✅ add details (IP, session, etc.)
       auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
       SecurityContextHolder.getContext().setAuthentication(auth);
 
     } catch (Exception e) {
-      // ✅ log so you can see what's happening
-      System.out.println("JWT invalid or expired for " + request.getMethod() + " " + request.getRequestURI()
-          + " : " + e.getMessage());
+      System.out.println("JWT invalid/expired: " + request.getMethod() + " " + request.getRequestURI()
+          + " -> " + e.getMessage());
     }
 
     chain.doFilter(request, response);
+  }
+
+  @SuppressWarnings("unchecked")
+  private List<GrantedAuthority> buildAuthorities(Claims claims) {
+    List<String> roles = (List<String>) claims.getOrDefault("roles", List.of());
+    List<String> perms = (List<String>) claims.getOrDefault("perms", List.of());
+
+    List<GrantedAuthority> auths = new ArrayList<>();
+
+    // ✅ roles: accept "ADMIN" or "ROLE_ADMIN"
+    for (String r : roles) {
+      if (r == null || r.isBlank()) continue;
+      String name = r.startsWith("ROLE_") ? r : "ROLE_" + r;
+      auths.add(new SimpleGrantedAuthority(name));
+    }
+
+    // ✅ perms: accept "PEOPLE" or "PERM_PEOPLE"
+    for (String p : perms) {
+      if (p == null || p.isBlank()) continue;
+      String name = p.startsWith("PERM_") ? p : "PERM_" + p;
+      auths.add(new SimpleGrantedAuthority(name));
+    }
+
+    return auths;
   }
 
   private String resolveToken(HttpServletRequest request) {
