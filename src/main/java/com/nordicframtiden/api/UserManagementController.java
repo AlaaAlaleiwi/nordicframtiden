@@ -1,5 +1,6 @@
 package com.nordicframtiden.api;
 
+import com.nordicframtiden.security.model.Permission;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.service.UserService;
 import jakarta.validation.constraints.Email;
@@ -11,10 +12,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/users")
-@PreAuthorize("hasAnyRole('STAFF','ADMIN')")
 public class UserManagementController {
 
   private final UserService userService;
@@ -36,7 +37,8 @@ public class UserManagementController {
       Integer yearOfBirth,
       String countyCode,
       String municipalityCode,
-      String password // returned only on create
+      Set<Permission> permissions, // ✅ NEW
+      String password // only on create/reset
   ) {}
 
   public record CreateUserRequest(
@@ -48,7 +50,9 @@ public class UserManagementController {
 
       @NotNull Integer yearOfBirth,
       @NotBlank String countyCode,
-      @NotBlank String municipalityCode
+      @NotBlank String municipalityCode,
+
+      Set<Permission> permissions // ✅ NEW (used for STAFF)
   ) {}
 
   public record UpdateUserRequest(
@@ -60,7 +64,9 @@ public class UserManagementController {
 
       Integer yearOfBirth,
       String countyCode,
-      String municipalityCode
+      String municipalityCode,
+
+      Set<Permission> permissions // ✅ NEW (optional; only applied to STAFF)
   ) {}
 
   private static UserResponse toResponse(UserService.DetailedUser u, String password) {
@@ -75,6 +81,7 @@ public class UserManagementController {
         u.yearOfBirth(),
         u.countyCode(),
         u.municipalityCode(),
+        u.permissions(),
         password
     );
   }
@@ -91,12 +98,14 @@ public class UserManagementController {
         u.yearOfBirth(),
         u.countyCode(),
         u.municipalityCode(),
+        u.permissions(),
         password
     );
   }
 
   // ---------- Endpoints ----------
 
+  // ✅ Anyone logged-in can call /me
   @GetMapping("/me")
   @PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
   public UserResponse me(Authentication auth) {
@@ -105,21 +114,26 @@ public class UserManagementController {
     return toResponse(user, null);
   }
 
+  // ✅ STAFF/ADMIN can view user
   @GetMapping("/{id}")
+  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   public UserResponse getOne(@PathVariable Long id) {
     var r = userService.getDetailedById(id);
     return toResponse(r, null);
   }
 
-  // GET /api/users?role=USER
+  // ✅ STAFF/ADMIN can list
   @GetMapping
+  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   public List<UserResponse> list(@RequestParam Role role) {
     return userService.listDetailedByRole(role).stream()
         .map(r -> toResponse(r, null))
         .toList();
   }
 
+  // ✅ STAFF/ADMIN can create users (your UI does)
   @PostMapping
+  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   public UserResponse create(@RequestParam Role role, @RequestBody CreateUserRequest req) {
     boolean enabled = req.enabled() == null || req.enabled();
 
@@ -132,16 +146,17 @@ public class UserManagementController {
         req.hourlyCost(),
         req.yearOfBirth(),
         req.countyCode(),
-        req.municipalityCode()
+        req.municipalityCode(),
+        req.permissions() // ✅ new
     );
 
-    // password returned only here
     return toResponse(created, created.password());
   }
 
+  // ✅ STAFF/ADMIN can update
   @PutMapping("/{id}")
+  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   public UserResponse update(@PathVariable Long id, @RequestBody UpdateUserRequest req) {
-
     var updated = userService.updateWithProfile(
         id,
         req.fullName(),
@@ -151,24 +166,25 @@ public class UserManagementController {
         req.hourlyCost(),
         req.yearOfBirth(),
         req.countyCode(),
-        req.municipalityCode()
+        req.municipalityCode(),
+        req.permissions() // ✅ new
     );
 
     return toResponse(updated, null);
   }
 
+  // ✅ ADMIN only delete
   @DeleteMapping("/{id}")
   @PreAuthorize("hasRole('ADMIN')")
   public void delete(@PathVariable Long id) {
     userService.deleteUser(id);
   }
 
-    // POST /api/users/{id}/reset-password  (ADMIN only)
+  // ✅ ADMIN only reset-password
   @PostMapping("/{id}/reset-password")
   @PreAuthorize("hasRole('ADMIN')")
   public UserResponse resetPassword(@PathVariable Long id) {
     var updated = userService.resetPassword(id);
-    // password returned here
     return toResponse(updated, updated.password());
   }
 }

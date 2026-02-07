@@ -1,6 +1,7 @@
 package com.nordicframtiden.security.service;
 
 import com.nordicframtiden.security.model.AppUser;
+import com.nordicframtiden.security.model.Permission;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.model.UserProfile;
 import com.nordicframtiden.security.repo.AppUserRepository;
@@ -41,6 +42,7 @@ public class UserService {
       Integer yearOfBirth,
       String countyCode,
       String municipalityCode,
+      Set<Permission> permissions,
       String password
   ) {}
 
@@ -54,7 +56,8 @@ public class UserService {
       BigDecimal hourlyCost,
       Integer yearOfBirth,
       String countyCode,
-      String municipalityCode
+      String municipalityCode,
+      Set<Permission> permissions
   ) {}
 
   // ---------- Validation helpers ----------
@@ -75,23 +78,25 @@ public class UserService {
     if (!cc.matches("\\d{2}")) throw new IllegalArgumentException("Invalid countyCode");
     if (!mc.matches("\\d{4}")) throw new IllegalArgumentException("Invalid municipalityCode");
 
-    // Optional but recommended consistency check:
-    if (!mc.startsWith(cc)) {
-      throw new IllegalArgumentException("municipalityCode must start with countyCode");
-    }
+    if (!mc.startsWith(cc)) throw new IllegalArgumentException("municipalityCode must start with countyCode");
+  }
+
+  private static Set<Permission> safePerms(Set<Permission> perms) {
+    return perms == null ? Set.of() : perms;
   }
 
   // ---------- Read ----------
-public UserProfile getProfileByUserId(Long userId) {
-  return profileRepo.findByUserId(userId)
-      .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
-}
+
+  public UserProfile getProfileByUserId(Long userId) {
+    return profileRepo.findByUserId(userId)
+        .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+  }
 
   public DetailedUser getDetailedByUsername(String username) {
-    var u = userRepo.findByUsername(username)
+    AppUser u = userRepo.findByUsername(username)
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-    var profile = profileRepo.findByUserId(u.getId()).orElse(null);
+    UserProfile profile = profileRepo.findByUserId(u.getId()).orElse(null);
 
     return new DetailedUser(
         u.getId(),
@@ -103,14 +108,15 @@ public UserProfile getProfileByUserId(Long userId) {
         profile != null ? profile.getHourlyCost() : null,
         profile != null ? profile.getYearOfBirth() : null,
         profile != null ? profile.getCountyCode() : null,
-        profile != null ? profile.getMunicipalityCode() : null
+        profile != null ? profile.getMunicipalityCode() : null,
+        safePerms(u.getPermissions())
     );
   }
 
   public DetailedUser getDetailedById(Long id) {
     return userRepo.findById(id)
         .map(u -> {
-          var profile = profileRepo.findByUserId(u.getId()).orElse(null);
+          UserProfile profile = profileRepo.findByUserId(u.getId()).orElse(null);
           return new DetailedUser(
               u.getId(),
               u.getUsername(),
@@ -121,7 +127,8 @@ public UserProfile getProfileByUserId(Long userId) {
               profile != null ? profile.getHourlyCost() : null,
               profile != null ? profile.getYearOfBirth() : null,
               profile != null ? profile.getCountyCode() : null,
-              profile != null ? profile.getMunicipalityCode() : null
+              profile != null ? profile.getMunicipalityCode() : null,
+              safePerms(u.getPermissions())
           );
         })
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -129,18 +136,19 @@ public UserProfile getProfileByUserId(Long userId) {
 
   public List<UserRow> listDetailedByRole(Role role) {
     return userRepo.findAllByRole(role).stream().map(u -> {
-      var p = profileRepo.findByUserId(u.getId()).orElse(null);
+      UserProfile p = profileRepo.findByUserId(u.getId()).orElse(null);
       return new UserRow(
           u.getId(),
           u.getUsername(),
           u.isEnabled(),
-          p == null ? null : p.getFullName(),
-          p == null ? null : p.getEmail(),
-          p == null ? null : p.getPhone(),
-          p == null ? null : p.getHourlyCost(),
-          p == null ? null : p.getYearOfBirth(),
-          p == null ? null : p.getCountyCode(),
-          p == null ? null : p.getMunicipalityCode(),
+          p != null ? p.getFullName() : null,
+          p != null ? p.getEmail() : null,
+          p != null ? p.getPhone() : null,
+          p != null ? p.getHourlyCost() : null,
+          p != null ? p.getYearOfBirth() : null,
+          p != null ? p.getCountyCode() : null,
+          p != null ? p.getMunicipalityCode() : null,
+          safePerms(u.getPermissions()),
           null
       );
     }).toList();
@@ -158,7 +166,8 @@ public UserProfile getProfileByUserId(Long userId) {
       BigDecimal hourlyCost,
       Integer yearOfBirth,
       String countyCode,
-      String municipalityCode
+      String municipalityCode,
+      Set<Permission> permissions // ✅ NEW PARAM
   ) {
 
     if (role != Role.USER && role != Role.STAFF) {
@@ -183,6 +192,11 @@ public UserProfile getProfileByUserId(Long userId) {
     u.setPasswordHash(encoder.encode(rawPassword));
     u.setEnabled(enabled);
     u.setRoles(Set.of(role));
+
+    // ✅ Permissions only matter for STAFF
+    if (role == Role.STAFF) u.setPermissions(safePerms(permissions));
+    else u.setPermissions(Set.of());
+
     u = userRepo.save(u);
 
     UserProfile p = new UserProfile();
@@ -209,6 +223,7 @@ public UserProfile getProfileByUserId(Long userId) {
         p.getYearOfBirth(),
         p.getCountyCode(),
         p.getMunicipalityCode(),
+        safePerms(u.getPermissions()),
         rawPassword
     );
   }
@@ -225,8 +240,10 @@ public UserProfile getProfileByUserId(Long userId) {
       BigDecimal hourlyCost,
       Integer yearOfBirth,
       String countyCode,
-      String municipalityCode
+      String municipalityCode,
+      Set<Permission> permissions // ✅ NEW PARAM
   ) {
+
     AppUser u = userRepo.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
 
     if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
@@ -250,17 +267,13 @@ public UserProfile getProfileByUserId(Long userId) {
       p.setPhone(phone.trim());
     }
 
-    if (hourlyCost != null) {
-      p.setHourlyCost(hourlyCost);
-    }
+    if (hourlyCost != null) p.setHourlyCost(hourlyCost);
 
-    // ✅ keep required fields always valid
     if (yearOfBirth != null) {
       validateYear(yearOfBirth);
       p.setYearOfBirth(yearOfBirth);
     }
 
-    // if either code is provided, require both and validate relationship
     boolean anyCodeProvided =
         (countyCode != null && !countyCode.isBlank()) ||
         (municipalityCode != null && !municipalityCode.isBlank());
@@ -271,6 +284,12 @@ public UserProfile getProfileByUserId(Long userId) {
       validateCodes(nextCounty, nextMunicipality);
       p.setCountyCode(nextCounty);
       p.setMunicipalityCode(nextMunicipality);
+    }
+
+    // ✅ Update permissions only if this user is STAFF and request includes permissions
+    boolean isStaff = u.getRoles() != null && u.getRoles().contains(Role.STAFF);
+    if (isStaff && permissions != null) {
+      u.setPermissions(safePerms(permissions));
     }
 
     profileRepo.save(p);
@@ -287,6 +306,7 @@ public UserProfile getProfileByUserId(Long userId) {
         p.getYearOfBirth(),
         p.getCountyCode(),
         p.getMunicipalityCode(),
+        safePerms(u.getPermissions()),
         null
     );
   }
@@ -305,23 +325,21 @@ public UserProfile getProfileByUserId(Long userId) {
     userRepo.delete(u);
   }
 
+  // ---------- Reset Password ----------
 
-    @Transactional
+  @Transactional
   public UserRow resetPassword(Long id) {
     AppUser u = userRepo.findById(id)
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-    // block admins here as well (same policy as update/delete)
     if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
       throw new IllegalArgumentException("Cannot reset ADMIN password from /api/users");
     }
 
-    // generate new password + update hash
     String rawPassword = generatePassword(12);
     u.setPasswordHash(encoder.encode(rawPassword));
     userRepo.save(u);
 
-    // keep profile data in response (if missing profile, still return something)
     UserProfile p = profileRepo.findByUserId(u.getId()).orElse(null);
 
     return new UserRow(
@@ -335,9 +353,11 @@ public UserProfile getProfileByUserId(Long userId) {
         p != null ? p.getYearOfBirth() : null,
         p != null ? p.getCountyCode() : null,
         p != null ? p.getMunicipalityCode() : null,
+        safePerms(u.getPermissions()),
         rawPassword
     );
   }
+
   // ---------- Username + Password helpers ----------
 
   private String generateUniqueUsername(String fullName) {
