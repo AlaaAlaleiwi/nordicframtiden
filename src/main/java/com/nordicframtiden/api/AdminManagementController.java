@@ -65,6 +65,11 @@ public class AdminManagementController {
       long staff
   ) {}
 
+  public record ResetPasswordResponse(
+    Long id,
+    String username,
+    String password
+) {}
   /* =========================
      ENDPOINTS
      ========================= */
@@ -152,7 +157,11 @@ public class AdminManagementController {
   public void delete(@PathVariable Long id) {
     adminService.deleteAdmin(id);
   }
-
+@PostMapping("/{id}/reset-password")
+public ResetPasswordResponse resetPassword(@PathVariable Long id) {
+  var updated = adminService.resetAdminPassword(id);
+  return new ResetPasswordResponse(updated.id(), updated.username(), updated.password());
+}
   /* =========================
      STATS
      ========================= */

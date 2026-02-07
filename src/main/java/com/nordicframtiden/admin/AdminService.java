@@ -252,4 +252,30 @@ public class AdminService {
         null // never expose password
     );
   }
+
+  @Transactional
+  public AdminRow resetAdminPassword(Long id) {
+    AppUser u = repo.findById(id)
+        .orElseThrow(() -> new IllegalArgumentException("Admin not found"));
+
+    if (u.getRoles() == null || !u.getRoles().contains(Role.ADMIN)) {
+      throw new IllegalArgumentException("User is not an admin");
+    }
+
+    String newPassword = generatePassword();
+    u.setPasswordHash(encoder.encode(newPassword));
+    repo.save(u);
+
+    AdminProfile p = adminProfileRepo.findByUserId(u.getId()).orElse(null);
+
+    return new AdminRow(
+        u.getId(),
+        u.getUsername(),
+        u.isEnabled(),
+        p != null ? p.getFullName() : null,
+        p != null ? p.getEmail() : null,
+        p != null ? p.getPhone() : null,
+        newPassword // ✅ returned ONCE so frontend can show it
+    );
+  }
 }
