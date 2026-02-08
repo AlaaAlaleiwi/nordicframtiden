@@ -16,6 +16,7 @@ import java.util.Set;
 
 @RestController
 @RequestMapping("/api/users")
+ @PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
 public class UserManagementController {
 
   private final UserService userService;
@@ -107,7 +108,6 @@ public class UserManagementController {
 
   // ✅ Anyone logged-in can call /me
   @GetMapping("/me")
-  @PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
   public UserResponse me(Authentication auth) {
     var username = auth.getName();
     var user = userService.getDetailedByUsername(username);
@@ -116,7 +116,6 @@ public class UserManagementController {
 
   // ✅ STAFF/ADMIN can view user
   @GetMapping("/{id}")
-  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   public UserResponse getOne(@PathVariable Long id) {
     var r = userService.getDetailedById(id);
     return toResponse(r, null);
@@ -124,7 +123,6 @@ public class UserManagementController {
 
   // ✅ STAFF/ADMIN can list
   @GetMapping
-  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   public List<UserResponse> list(@RequestParam Role role) {
     return userService.listDetailedByRole(role).stream()
         .map(r -> toResponse(r, null))
@@ -133,7 +131,6 @@ public class UserManagementController {
 
   // ✅ STAFF/ADMIN can create users (your UI does)
   @PostMapping
-  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   public UserResponse create(@RequestParam Role role, @RequestBody CreateUserRequest req) {
     boolean enabled = req.enabled() == null || req.enabled();
 
@@ -155,7 +152,6 @@ public class UserManagementController {
 
   // ✅ STAFF/ADMIN can update
   @PutMapping("/{id}")
-  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   public UserResponse update(@PathVariable Long id, @RequestBody UpdateUserRequest req) {
     var updated = userService.updateWithProfile(
         id,
@@ -182,7 +178,6 @@ public class UserManagementController {
 
   // ✅ ADMIN only reset-password
   @PostMapping("/{id}/reset-password")
-  @PreAuthorize("hasRole('ADMIN')")
   public UserResponse resetPassword(@PathVariable Long id) {
     var updated = userService.resetPassword(id);
     return toResponse(updated, updated.password());
