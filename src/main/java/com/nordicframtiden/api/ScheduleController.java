@@ -13,7 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/schedules")
-@PreAuthorize("hasAnyRole('ADMIN','STAFF')")
+@PreAuthorize("hasAnyRole('ADMIN','STAFF','USER')")
 public class ScheduleController {
 
   private final ScheduleService service;
