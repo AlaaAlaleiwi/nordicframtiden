@@ -12,7 +12,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/availability")
-@PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+@PreAuthorize("hasAnyRole('ADMIN', 'STAFF','USER')")
 public class AvailabilityController {
 
   private final AvailabilityService service;
@@ -73,7 +73,6 @@ public class AvailabilityController {
   }
 
   @GetMapping("/me")
- 
   public List<AvailabilityDto> my(Authentication auth) {
     return service.my(auth).stream().map(this::toDto).toList();
   }
