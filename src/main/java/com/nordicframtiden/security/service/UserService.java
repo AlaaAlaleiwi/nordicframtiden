@@ -246,10 +246,6 @@ public class UserService {
 
     AppUser u = userRepo.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-    if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
-      throw new IllegalArgumentException("Cannot edit ADMIN from /api/users");
-    }
-
     if (enabled != null) u.setEnabled(enabled);
 
     UserProfile p = profileRepo.findByUserId(id)

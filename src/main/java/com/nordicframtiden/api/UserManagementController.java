@@ -153,6 +153,7 @@ public class UserManagementController {
   // ✅ STAFF/ADMIN can update
   @PutMapping("/{id}")
   public UserResponse update(@PathVariable Long id, @RequestBody UpdateUserRequest req) {
+    System.out.println(req);
     var updated = userService.updateWithProfile(
         id,
         req.fullName(),
