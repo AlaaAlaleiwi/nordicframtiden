@@ -162,7 +162,6 @@ public NetSalaryResponse payslipForStaff(
   /* ===================== LAZY USER VIEW ===================== */
 
   @GetMapping("/user/years")
-  @PreAuthorize("hasAnyRole('ADMIN','USER')")
   public List<YearRow> userYears(@RequestParam Long userId) {
     return shiftRepo.findInRange(
             OffsetDateTime.parse("2000-01-01T00:00:00Z"),
