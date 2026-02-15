@@ -4,6 +4,7 @@ import com.nordicframtiden.pharmacy.ScheduleService;
 import com.nordicframtiden.pharmacy.ScheduleShift;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -133,5 +134,38 @@ public class ScheduleController {
         created.getEndAt(),
         created.getNote());
 
+  }
+
+  @PutMapping("/{id}")
+  public EventDto update(@PathVariable Long id,
+      @RequestBody CreateRequest req) {
+
+    var updated = service.update(
+        id,
+        req.pharmacyId(),
+        req.userId(),
+        req.startAt(),
+        req.endAt(),
+        req.note());
+
+    Long pid = updated.getPharmacy() == null ? null : updated.getPharmacy().getId();
+    String pname = updated.getPharmacy() == null ? null : updated.getPharmacy().getName();
+    var u = userProfileRepository.findByUserId(updated.getUser().getId());
+
+    return new EventDto(
+        updated.getId(),
+        pid,
+        pname,
+        updated.getUser().getId(),
+        u.get().getFullName(),
+        updated.getStartAt(),
+        updated.getEndAt(),
+        updated.getNote());
+  }
+
+  @DeleteMapping("/{id}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void delete(@PathVariable Long id) {
+    service.delete(id);
   }
 }
