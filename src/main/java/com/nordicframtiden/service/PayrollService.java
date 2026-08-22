@@ -6,6 +6,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.DayOfWeek;
+import java.time.ZonedDateTime;
 
 import org.springframework.stereotype.Service;
 
@@ -48,11 +50,13 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
   var shifts = staffScheduleService.listForUser(userId, range.start(), range.end());
 
   BigDecimal totalHours = BigDecimal.ZERO;
+  BigDecimal gross = BigDecimal.ZERO;
   for (var s : shifts) {
-    totalHours = totalHours.add(hoursBetween(s.getStartAt().toInstant(), s.getEndAt().toInstant()));
+    Instant start = s.getStartAt().toInstant();
+    Instant end = s.getEndAt().toInstant();
+    totalHours = totalHours.add(hoursBetween(start, end));
+    gross = gross.add(shiftGross(start, end, profile.getHourlyCost()));
   }
-
-  BigDecimal gross = totalHours.multiply(profile.getHourlyCost());
 
   int taxYear = year;
   int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
@@ -92,10 +96,19 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     var shiftsB = staffScheduleService.listForUser(userId, range.start(), range.end()); // implement/exists
 
     BigDecimal totalHours = BigDecimal.ZERO;
-    for (var s : shiftsA) totalHours = totalHours.add(hoursBetween(s.getStartAt().toInstant(), s.getEndAt().toInstant()));
-    for (var s : shiftsB) totalHours = totalHours.add(hoursBetween(s.getStartAt().toInstant(), s.getEndAt().toInstant()));
-
-    BigDecimal gross = totalHours.multiply(profile.getHourlyCost());
+    BigDecimal gross = BigDecimal.ZERO;
+    for (var s : shiftsA) {
+      Instant start = s.getStartAt().toInstant();
+      Instant end = s.getEndAt().toInstant();
+      totalHours = totalHours.add(hoursBetween(start, end));
+      gross = gross.add(shiftGross(start, end, profile.getHourlyCost()));
+    }
+    for (var s : shiftsB) {
+      Instant start = s.getStartAt().toInstant();
+      Instant end = s.getEndAt().toInstant();
+      totalHours = totalHours.add(hoursBetween(start, end));
+      gross = gross.add(shiftGross(start, end, profile.getHourlyCost()));
+    }
 
     int taxYear = year;
     int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
@@ -135,5 +148,38 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     long ms = Duration.between(start, end).toMillis();
     if (ms <= 0) return BigDecimal.ZERO;
     return BigDecimal.valueOf(ms).divide(BigDecimal.valueOf(3600000), 6, RoundingMode.HALF_UP);
+  }
+
+  /**
+   * Compute gross pay for a shift, applying day-of-week multipliers:
+   * - Saturday: 1.5x
+   * - Sunday: 2.0x
+   * Splits a shift across UTC midnights to apply correct multipliers per calendar day.
+   */
+  private BigDecimal shiftGross(Instant start, Instant end, BigDecimal hourlyCost) {
+    if (start == null || end == null) return BigDecimal.ZERO;
+    if (!end.isAfter(start)) return BigDecimal.ZERO;
+
+    BigDecimal gross = BigDecimal.ZERO;
+    Instant cursor = start;
+    while (cursor.isBefore(end)) {
+      ZonedDateTime z = cursor.atZone(ZoneOffset.UTC);
+      Instant nextMidnight = z.toLocalDate().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+      Instant segmentEnd = end.isBefore(nextMidnight) ? end : nextMidnight;
+
+      long ms = Duration.between(cursor, segmentEnd).toMillis();
+      BigDecimal hours = BigDecimal.valueOf(ms).divide(BigDecimal.valueOf(3600000), 6, RoundingMode.HALF_UP);
+
+      DayOfWeek dow = z.getDayOfWeek();
+      BigDecimal multiplier = BigDecimal.ONE;
+      if (dow == DayOfWeek.SATURDAY) multiplier = BigDecimal.valueOf(1.5);
+      else if (dow == DayOfWeek.SUNDAY) multiplier = BigDecimal.valueOf(2.0);
+
+      gross = gross.add(hourlyCost.multiply(hours).multiply(multiplier));
+
+      cursor = segmentEnd;
+    }
+
+    return gross;
   }
 }

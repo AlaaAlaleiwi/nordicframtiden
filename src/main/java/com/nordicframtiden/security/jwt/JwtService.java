@@ -70,6 +70,14 @@ public class JwtService {
     return parse(token).getBody().getSubject();
   }
 
+  public Claims validateRefreshToken(String token) {
+    Claims claims = parse(token).getBody();
+    if (!"refresh".equals(claims.get("type"))) {
+      throw new JwtException("Token is not a refresh token");
+    }
+    return claims;
+  }
+
   public boolean isRefreshToken(String token) {
     Claims claims = parse(token).getBody();
     return "refresh".equals(claims.get("type"));

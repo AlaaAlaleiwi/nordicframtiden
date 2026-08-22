@@ -57,6 +57,7 @@ public class SecurityConfig {
         // ✅ Exact frontend origins
         config.setAllowedOrigins(List.of(
                 "http://localhost:5173",
+                "http://localhost:3000",
                 "https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com"));
 
         // ✅ IMPORTANT: include PATCH (preflight is failing because PATCH isn't allowed)
