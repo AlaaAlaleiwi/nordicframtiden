@@ -6,6 +6,7 @@ import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.model.UserProfile;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
+import com.nordicframtiden.settings.EmailService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,11 +23,13 @@ public class UserService {
   private final AppUserRepository userRepo;
   private final UserProfileRepository profileRepo;
   private final PasswordEncoder encoder;
+  private final EmailService emailService;
 
-  public UserService(AppUserRepository userRepo, UserProfileRepository profileRepo, PasswordEncoder encoder) {
+  public UserService(AppUserRepository userRepo, UserProfileRepository profileRepo, PasswordEncoder encoder, EmailService emailService) {
     this.userRepo = userRepo;
     this.profileRepo = profileRepo;
     this.encoder = encoder;
+    this.emailService = emailService;
   }
 
   // ---------- Records ----------
@@ -337,6 +340,9 @@ public class UserService {
     userRepo.save(u);
 
     UserProfile p = profileRepo.findByUserId(u.getId()).orElse(null);
+    if (p != null && p.getEmail() != null && !p.getEmail().isBlank()) {
+      emailService.sendPasswordResetEmail(p.getEmail(), u.getUsername(), rawPassword);
+    }
 
     return new UserRow(
         u.getId(),

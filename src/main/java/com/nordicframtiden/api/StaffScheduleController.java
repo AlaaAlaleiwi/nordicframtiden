@@ -2,13 +2,18 @@ package com.nordicframtiden.api;
 
 import com.nordicframtiden.company.StaffScheduleService;
 import com.nordicframtiden.company.StaffShift;
+import com.nordicframtiden.settings.EmailService;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication; // ✅ correct
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/staff-schedules")
@@ -16,9 +21,11 @@ import java.util.List;
 public class StaffScheduleController {
 
   private final StaffScheduleService service;
+  private final EmailService emailService;
 
-  public StaffScheduleController(StaffScheduleService service) {
+  public StaffScheduleController(StaffScheduleService service, EmailService emailService) {
     this.service = service;
+    this.emailService = emailService;
   }
 
   public record EventDto(
@@ -97,5 +104,49 @@ public class StaffScheduleController {
    
   public void delete(@PathVariable Long id) {
     service.delete(id);
+  }
+
+  @PostMapping("/send-pdf-email")
+  public ResponseEntity<Map<String, Object>> sendSchedulePdfEmail(@RequestBody Map<String, Object> payload) {
+    Long userId = payload.get("userId") instanceof Number n ? n.longValue() : null;
+    String email = payload.get("email") == null ? "" : String.valueOf(payload.get("email")).trim();
+    String employeeName = payload.get("employeeName") == null ? "" : String.valueOf(payload.get("employeeName")).trim();
+    String pdfBase64 = payload.get("pdfBase64") == null ? "" : String.valueOf(payload.get("pdfBase64")).trim();
+    String startIso = payload.get("startDate") == null ? null : String.valueOf(payload.get("startDate")).trim();
+    String endIso = payload.get("endDate") == null ? null : String.valueOf(payload.get("endDate")).trim();
+
+    if (userId == null || email.isBlank() || !email.contains("@") || pdfBase64.isBlank()) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+          .body(Map.of("error", "Missing required fields to send the schedule PDF email."));
+    }
+
+    byte[] pdfBytes;
+    try {
+      pdfBytes = Base64.getDecoder().decode(pdfBase64);
+    } catch (IllegalArgumentException e) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+          .body(Map.of("error", "Invalid PDF payload."));
+    }
+
+    OffsetDateTime start = startIso == null || startIso.isBlank() ? null : OffsetDateTime.parse(startIso);
+    OffsetDateTime end = endIso == null || endIso.isBlank() ? null : OffsetDateTime.parse(endIso);
+
+    boolean sent = emailService.sendSchedulePdfEmail(
+        email,
+        employeeName.isBlank() ? "Staff member" : employeeName,
+        pdfBytes,
+        "Staff schedule",
+        start,
+        end
+    );
+
+    return ResponseEntity.ok(Map.of(
+        "sent", sent,
+        "recipient", email,
+        "employeeName", employeeName.isBlank() ? "Staff member" : employeeName,
+        "startDate", startIso,
+        "endDate", endIso,
+        "filename", "schedule-" + (startIso == null ? "period" : startIso.substring(0, 10)) + ".pdf"
+    ));
   }
 }

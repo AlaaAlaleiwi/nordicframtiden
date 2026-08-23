@@ -4,6 +4,8 @@ import com.nordicframtiden.admin.AdminService;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -71,10 +73,14 @@ public class AdminManagementController {
        ========================= */
     
     @GetMapping("/me")
-    public AdminResponse me(Authentication auth) {
+    public ResponseEntity<AdminResponse> me(Authentication auth) {
+        if (auth == null || !auth.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         var username = auth.getName();
         var user = adminService.getDetailedUser(username);
-        return new AdminResponse(
+        return ResponseEntity.ok(new AdminResponse(
                 user.id(),
                 user.username(),
                 user.enabled(),
@@ -82,7 +88,7 @@ public class AdminManagementController {
                 user.email(),
                 user.phone(),
                 null
-        );
+        ));
     }
 
     @GetMapping
@@ -129,4 +135,10 @@ public class AdminManagementController {
         repo.countByRole(Role.STAFF)
     );
   }
+
+    @PostMapping("/{id}/reset-password")
+    public ResetPasswordResponse resetPassword(@PathVariable Long id) {
+        var updated = adminService.resetAdminPassword(id);
+        return new ResetPasswordResponse(updated.id(), updated.username(), updated.password());
+    }
 }

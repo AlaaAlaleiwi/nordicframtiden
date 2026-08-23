@@ -58,6 +58,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       SecurityContextHolder.getContext().setAuthentication(auth);
 
     } catch (Exception e) {
+      SecurityContextHolder.clearContext();
       System.out.println("JWT invalid/expired: " + request.getMethod() + " " + request.getRequestURI()
           + " -> " + e.getMessage());
     }

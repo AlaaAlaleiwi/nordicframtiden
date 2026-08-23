@@ -5,6 +5,7 @@ import com.nordicframtiden.admin.model.AdminProfileRepository;
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.settings.EmailService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,13 +21,16 @@ public class AdminService {
     private final AppUserRepository repo;
     private final AdminProfileRepository adminProfileRepo;
     private final PasswordEncoder encoder;
+    private final EmailService emailService;
 
     public AdminService(AppUserRepository repo,
                        AdminProfileRepository adminProfileRepo,
-                       PasswordEncoder encoder) {
+                       PasswordEncoder encoder,
+                       EmailService emailService) {
         this.repo = repo;
         this.adminProfileRepo = adminProfileRepo;
         this.encoder = encoder;
+        this.emailService = emailService;
     }
 
     public record AdminRow(
@@ -159,6 +163,9 @@ public class AdminService {
         repo.save(user);
 
         AdminProfile profile = adminProfileRepo.findByUserId(user.getId()).orElse(null);
+        if (profile != null && profile.getEmail() != null && !profile.getEmail().isBlank()) {
+            emailService.sendPasswordResetEmail(profile.getEmail(), user.getUsername(), rawPassword);
+        }
 
         return new AdminRow(
                 user.getId(),

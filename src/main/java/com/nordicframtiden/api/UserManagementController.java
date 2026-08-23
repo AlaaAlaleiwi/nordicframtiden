@@ -6,6 +6,8 @@ import com.nordicframtiden.security.service.UserService;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -108,10 +110,14 @@ public class UserManagementController {
 
   // ✅ Anyone logged-in can call /me
   @GetMapping("/me")
-  public UserResponse me(Authentication auth) {
+  public ResponseEntity<UserResponse> me(Authentication auth) {
+    if (auth == null || !auth.isAuthenticated()) {
+      return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
     var username = auth.getName();
     var user = userService.getDetailedByUsername(username);
-    return toResponse(user, null);
+    return ResponseEntity.ok(toResponse(user, null));
   }
 
   // ✅ STAFF/ADMIN can view user

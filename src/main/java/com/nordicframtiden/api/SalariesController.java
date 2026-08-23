@@ -8,6 +8,9 @@ import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;
 import com.nordicframtiden.service.model.NetSalaryResponse;
+import com.nordicframtiden.settings.EmailService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -28,19 +31,23 @@ public class SalariesController {
   private final StaffShiftRepository staffShiftRepo;
   private final UserProfileRepository profileRepo;
   private final AppUserRepository userRepo;
-private final PayrollService payrollService;
+  private final PayrollService payrollService;
+  private final EmailService emailService;
+
   public SalariesController(
       ScheduleShiftRepository shiftRepo,
       StaffShiftRepository staffShiftRepo,
       UserProfileRepository profileRepo,
       AppUserRepository userRepo,
-      PayrollService payrollService
+      PayrollService payrollService,
+      EmailService emailService
   ) {
     this.shiftRepo = shiftRepo;
     this.staffShiftRepo = staffShiftRepo;
     this.profileRepo = profileRepo;
     this.userRepo = userRepo;
     this.payrollService = payrollService;
+    this.emailService = emailService;
   }
 
   /* ===================== DTOs ===================== */
@@ -157,6 +164,48 @@ public NetSalaryResponse payslipForStaff(
 
     return shiftRepo.findInRange(start, end, pharmacyId, userId)
         .stream().map(this::toUserLine).toList();
+  }
+
+  @PostMapping("/send-pdf-email")
+  public ResponseEntity<Map<String, Object>> sendSalaryPdfEmail(
+      @RequestBody Map<String, Object> payload
+  ) {
+    Long userId = payload.get("userId") instanceof Number n ? n.longValue() : null;
+    Integer year = payload.get("year") instanceof Number n ? n.intValue() : null;
+    Integer month = payload.get("month") instanceof Number n ? n.intValue() : null;
+    String role = payload.get("role") == null ? "USER" : String.valueOf(payload.get("role"));
+    String email = payload.get("email") == null ? "" : String.valueOf(payload.get("email")).trim();
+    String employeeName = payload.get("employeeName") == null ? "" : String.valueOf(payload.get("employeeName")).trim();
+    String pdfBase64 = payload.get("pdfBase64") == null ? "" : String.valueOf(payload.get("pdfBase64")).trim();
+
+    if (userId == null || year == null || month == null || email.isBlank() || !email.contains("@") || pdfBase64.isBlank()) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+          .body(Map.of("error", "Missing required fields to send the salary PDF email."));
+    }
+
+    byte[] pdfBytes;
+    try {
+      pdfBytes = Base64.getDecoder().decode(pdfBase64);
+    } catch (IllegalArgumentException e) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+          .body(Map.of("error", "Invalid PDF payload."));
+    }
+
+    var payslip = "STAFF".equalsIgnoreCase(role)
+        ? payrollService.netSalaryForStaffMonth(userId, year, month)
+        : payrollService.netSalaryForUserMonth(userId, year, month);
+
+    String monthLabel = String.format("%04d-%02d", year, month);
+    boolean sent = emailService.sendSalaryPdfEmail(email, employeeName.isBlank() ? "Employee" : employeeName, pdfBytes, monthLabel);
+
+    return ResponseEntity.ok(Map.of(
+        "sent", sent,
+        "recipient", email,
+        "employeeName", employeeName,
+        "month", monthLabel,
+        "filename", "salary-" + monthLabel + ".pdf",
+        "payslip", payslip
+    ));
   }
 
   /* ===================== LAZY USER VIEW ===================== */

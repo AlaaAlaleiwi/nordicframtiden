@@ -10,9 +10,12 @@ import java.util.List;
 public class ContactRequestService {
 
   private final ContactRequestRepository repo;
+  private final ContactNotificationService contactNotificationService;
 
-  public ContactRequestService(ContactRequestRepository repo) {
+  public ContactRequestService(ContactRequestRepository repo,
+                              ContactNotificationService contactNotificationService) {
     this.repo = repo;
+    this.contactNotificationService = contactNotificationService;
   }
 
   public List<ContactRequest> list() {
@@ -42,16 +45,28 @@ public class ContactRequestService {
     c.setTopic(safe(req.topic()));
     c.setMessage(msg);
 
-    return repo.save(c);
+    ContactRequest saved = repo.save(c);
+    contactNotificationService.sendNewContactRequestNotification(saved);
+    return saved;
   }
 
   @Transactional
   public ContactRequest markHandled(Long id, boolean handled, String adminNote) {
     ContactRequest c = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Not found"));
+    String previousNote = c.getAdminNote();
+    String nextNote = safeOrNull(adminNote);
+
     c.setHandled(handled);
-    c.setAdminNote(safeOrNull(adminNote));
+    c.setAdminNote(nextNote);
     c.setHandledAt(handled ? OffsetDateTime.now() : null);
-    return repo.save(c);
+
+    ContactRequest saved = repo.save(c);
+
+    if (nextNote != null && !nextNote.isBlank() && !nextNote.equals(previousNote)) {
+      contactNotificationService.sendAdminReplyNotification(saved, nextNote);
+    }
+
+    return saved;
   }
 
   @Transactional

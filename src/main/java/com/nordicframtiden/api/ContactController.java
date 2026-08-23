@@ -88,7 +88,7 @@ public class ContactController {
   public record HandleRequest(Boolean handled, String adminNote) {}
 
   @PutMapping("/{id}/handled")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
   public ContactResponse markHandled(@PathVariable Long id, @RequestBody HandleRequest req) {
     boolean handled = req.handled() != null && req.handled();
     return ContactResponse.from(service.markHandled(id, handled, req.adminNote()));
