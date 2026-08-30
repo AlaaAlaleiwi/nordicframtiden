@@ -26,6 +26,8 @@ public class SecurityConfig {
         return http
                 // ✅ IMPORTANT: wire Spring CORS using the bean below
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                // Bearer tokens are accepted only from Authorization headers, so browsers
+                // cannot attach authentication ambiently to cross-site requests.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(e -> e.authenticationEntryPoint((req, res, ex) -> res.sendError(401)))
@@ -33,7 +35,16 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
 
-                        .requestMatchers("/api/admins/**").hasAnyRole("ADMIN","STAFF")
+                        .requestMatchers("/api/admins/**").hasRole("ADMIN")
+
+                        .requestMatchers("/api/users/me").authenticated()
+                        .requestMatchers("/api/users/**").hasAnyRole("ADMIN", "STAFF")
+
+                        .requestMatchers("/api/settings/**").hasRole("ADMIN")
+
+                        .requestMatchers("/api/salaries/payslip/me").authenticated()
+                        .requestMatchers("/api/salaries/**")
+                        .hasAnyAuthority("ROLE_ADMIN", "PERM_SALARIES")
 
                         // ✅ allow pharmacists (USER) to access their own schedule endpoint
                         .requestMatchers("/api/schedules/me").hasAnyRole("ADMIN", "USER","STAFF")
@@ -72,11 +83,7 @@ public class SecurityConfig {
                 "Accept",
                 "Origin"));
 
-        // If you use cookies (you do set cookies sometimes)
-        config.setAllowCredentials(true);
-
-        // Optional, but nice
-        config.setExposedHeaders(List.of("Set-Cookie"));
+        config.setAllowCredentials(false);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

@@ -7,6 +7,7 @@ import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.settings.EmailService;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Set;
 
 @Service
+@PreAuthorize("hasRole('ADMIN')")
 public class AdminService {
 
     private final AppUserRepository repo;
@@ -177,4 +179,3 @@ public class AdminService {
                 rawPassword);
     }
 }
-

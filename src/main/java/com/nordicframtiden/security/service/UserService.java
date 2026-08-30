@@ -8,6 +8,7 @@ import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.settings.EmailService;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -160,6 +161,7 @@ public class UserService {
   // ---------- Create ----------
 
   @Transactional
+  @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PERM_PEOPLE') and #role == T(com.nordicframtiden.security.model.Role).USER)")
   public UserRow createWithProfile(
       Role role,
       boolean enabled,
@@ -234,6 +236,7 @@ public class UserService {
   // ---------- Update ----------
 
   @Transactional
+  @PreAuthorize("@accountAuthorization.canManage(authentication, #id)")
   public UserRow updateWithProfile(
       Long id,
       String fullName,
@@ -310,9 +313,38 @@ public class UserService {
     );
   }
 
+  @Transactional
+  @PreAuthorize("isAuthenticated() and #username == authentication.name")
+  public UserRow updateOwnProfile(
+      String username,
+      String fullName,
+      String email,
+      String phone,
+      Integer yearOfBirth,
+      String countyCode,
+      String municipalityCode
+  ) {
+    AppUser user = userRepo.findByUsername(username)
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+    return updateWithProfile(
+        user.getId(),
+        fullName,
+        email,
+        phone,
+        null,
+        null,
+        yearOfBirth,
+        countyCode,
+        municipalityCode,
+        null
+    );
+  }
+
   // ---------- Delete ----------
 
   @Transactional
+  @PreAuthorize("hasRole('ADMIN')")
   public void deleteUser(Long id) {
     AppUser u = userRepo.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -327,6 +359,7 @@ public class UserService {
   // ---------- Reset Password ----------
 
   @Transactional
+  @PreAuthorize("hasRole('ADMIN')")
   public UserRow resetPassword(Long id) {
     AppUser u = userRepo.findById(id)
         .orElseThrow(() -> new IllegalArgumentException("User not found"));

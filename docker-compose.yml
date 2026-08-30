@@ -5,13 +5,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # Use Aiven DB (remote)
-      SPRING_DATASOURCE_URL: jdbc:postgresql://pg-nordidcframtiden-nordicframtiden.h.aivencloud.com:21542/defaultdb?sslmode=require
-      SPRING_DATASOURCE_USERNAME: avnadmin
-      SPRING_DATASOURCE_PASSWORD: AVNS__6SVGDfEFlW9YSxzCFE
-
-      # JWT (maps to app.jwt.secret if you use ${APP_JWT_SECRET})
-      APP_JWT_SECRET: "CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:?SPRING_DATASOURCE_URL must be set}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:?SPRING_DATASOURCE_USERNAME must be set}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?SPRING_DATASOURCE_PASSWORD must be set}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET must be set}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
 
       # Flyway
       SPRING_FLYWAY_ENABLED: "true"
@@ -20,11 +18,11 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: nordicframtiden
-      POSTGRES_USER: nordic
-      POSTGRES_PASSWORD: nordic
+      POSTGRES_DB: ${POSTGRES_DB:-nordicframtiden}
+      POSTGRES_USER: ${POSTGRES_USER:-nordic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 

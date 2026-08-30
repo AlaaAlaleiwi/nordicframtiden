@@ -1,8 +1,10 @@
 package com.nordicframtiden.settings;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -14,11 +16,13 @@ public class AppSettingsService {
     private static final String MAIL_HOST = "mail.host";
     private static final String MAIL_PORT = "mail.port";
     private static final String MAIL_USERNAME = "mail.username";
-    private static final String MAIL_PASSWORD = "mail.password";
     private static final String MAIL_FROM = "mail.from";
     private static final String MAIL_TO = "mail.to";
 
     private final AppSettingRepository repo;
+
+    @Value("${spring.mail.password:}")
+    private String smtpPassword = "";
 
     public AppSettingsService(AppSettingRepository repo) {
         this.repo = repo;
@@ -31,10 +35,17 @@ public class AppSettingsService {
             "host", get(MAIL_HOST, ""),
             "port", get(MAIL_PORT, "587"),
             "username", get(MAIL_USERNAME, ""),
-            "password", get(MAIL_PASSWORD, ""),
+            "passwordConfigured", Boolean.toString(smtpPassword != null && !smtpPassword.isBlank()),
             "from", get(MAIL_FROM, ""),
             "to", get(MAIL_TO, "")
         );
+    }
+
+    /** Runtime-only settings. Never return this map from an API. */
+    public Map<String, String> getMailRuntimeSettings() {
+        Map<String, String> runtime = new LinkedHashMap<>(getMailSettings());
+        runtime.put("password", smtpPassword == null ? "" : smtpPassword);
+        return runtime;
     }
 
     @Transactional
@@ -44,7 +55,6 @@ public class AppSettingsService {
         set(MAIL_HOST, settings.host() == null ? "" : settings.host());
         set(MAIL_PORT, settings.port() == null ? "587" : String.valueOf(settings.port()));
         set(MAIL_USERNAME, settings.username() == null ? "" : settings.username());
-        set(MAIL_PASSWORD, settings.password() == null ? "" : settings.password());
         set(MAIL_FROM, settings.from() == null ? "" : settings.from());
         set(MAIL_TO, settings.to() == null ? "" : settings.to());
     }
@@ -70,7 +80,6 @@ public class AppSettingsService {
         String host,
         Integer port,
         String username,
-        String password,
         String from,
         String to
     ) {}

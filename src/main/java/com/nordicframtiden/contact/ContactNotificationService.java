@@ -18,7 +18,7 @@ public class ContactNotificationService {
     }
 
     public void sendNewContactRequestNotification(ContactRequest request) {
-        Map<String, String> mail = appSettingsService.getMailSettings();
+        Map<String, String> mail = appSettingsService.getMailRuntimeSettings();
         if (!Boolean.parseBoolean(mail.getOrDefault("enabled", "false"))) {
             return;
         }
@@ -61,7 +61,7 @@ public class ContactNotificationService {
             return;
         }
 
-        Map<String, String> mail = appSettingsService.getMailSettings();
+        Map<String, String> mail = appSettingsService.getMailRuntimeSettings();
         if (!Boolean.parseBoolean(mail.getOrDefault("enabled", "false"))) {
             return;
         }

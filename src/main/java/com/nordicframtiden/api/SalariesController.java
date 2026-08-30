@@ -24,8 +24,10 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/salaries")
-@PreAuthorize("hasAnyRole('ADMIN','USER','STAFF')")
 public class SalariesController {
+
+  private static final String CAN_MANAGE_SALARIES =
+      "hasRole('ADMIN') or hasAuthority('PERM_SALARIES')";
 
   private final ScheduleShiftRepository shiftRepo;
   private final StaffShiftRepository staffShiftRepo;
@@ -92,7 +94,7 @@ public class SalariesController {
  
 // ===== /api/salaries/payslip?userId= (ADMIN only) =====
 @GetMapping("/payslip")
- 
+  @PreAuthorize(CAN_MANAGE_SALARIES)
   public NetSalaryResponse payslipForUser(
       @RequestParam Long userId,
       @RequestParam int year,
@@ -102,6 +104,7 @@ public class SalariesController {
   }
   /* ===================== PAYSLIP (ME) ===================== */
 @GetMapping("/payslip/staff")
+@PreAuthorize(CAN_MANAGE_SALARIES)
 public NetSalaryResponse payslipForStaff(
     @RequestParam Long userId,
     @RequestParam int year,
@@ -111,6 +114,7 @@ public NetSalaryResponse payslipForStaff(
 }
   // GET /api/salaries/payslip/me?year=2026&month=3
   @GetMapping("/payslip/me")
+  @PreAuthorize("isAuthenticated()")
   public NetSalaryResponse payslipMe(
       @RequestParam int year,
       @RequestParam int month,
@@ -131,6 +135,7 @@ public NetSalaryResponse payslipForStaff(
   /* ===================== MONTH SUMMARY ===================== */
 
   @GetMapping("/month")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
   public List<PharmacySummary> monthly(
       @RequestParam OffsetDateTime start,
       @RequestParam OffsetDateTime end,
@@ -146,6 +151,7 @@ public NetSalaryResponse payslipForStaff(
   /* ===================== REPORT ===================== */
 
   @GetMapping("/report")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
   public List<ShiftLine> report(
       @RequestParam OffsetDateTime start,
       @RequestParam OffsetDateTime end,
@@ -167,20 +173,27 @@ public NetSalaryResponse payslipForStaff(
   }
 
   @PostMapping("/send-pdf-email")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
   public ResponseEntity<Map<String, Object>> sendSalaryPdfEmail(
-      @RequestBody Map<String, Object> payload
+      @RequestBody SalaryEmailRequest request
   ) {
-    Long userId = payload.get("userId") instanceof Number n ? n.longValue() : null;
-    Integer year = payload.get("year") instanceof Number n ? n.intValue() : null;
-    Integer month = payload.get("month") instanceof Number n ? n.intValue() : null;
-    String role = payload.get("role") == null ? "USER" : String.valueOf(payload.get("role"));
-    String email = payload.get("email") == null ? "" : String.valueOf(payload.get("email")).trim();
-    String employeeName = payload.get("employeeName") == null ? "" : String.valueOf(payload.get("employeeName")).trim();
-    String pdfBase64 = payload.get("pdfBase64") == null ? "" : String.valueOf(payload.get("pdfBase64")).trim();
+    Long userId = request.userId();
+    Integer year = request.year();
+    Integer month = request.month();
+    String role = request.role() == null ? "USER" : request.role();
+    String pdfBase64 = request.pdfBase64() == null ? "" : request.pdfBase64().trim();
 
-    if (userId == null || year == null || month == null || email.isBlank() || !email.contains("@") || pdfBase64.isBlank()) {
+    if (userId == null || year == null || month == null || pdfBase64.isBlank()) {
       return ResponseEntity.status(HttpStatus.BAD_REQUEST)
           .body(Map.of("error", "Missing required fields to send the salary PDF email."));
+    }
+
+    var profile = profileRepo.findByUserId(userId).orElse(null);
+    String email = profile == null || profile.getEmail() == null ? "" : profile.getEmail().trim();
+    String employeeName = profile == null || profile.getFullName() == null ? "" : profile.getFullName().trim();
+    if (email.isBlank() || !email.contains("@")) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+          .body(Map.of("error", "The employee does not have a valid profile email."));
     }
 
     byte[] pdfBytes;
@@ -208,9 +221,18 @@ public NetSalaryResponse payslipForStaff(
     ));
   }
 
+  public record SalaryEmailRequest(
+      Long userId,
+      Integer year,
+      Integer month,
+      String role,
+      String pdfBase64
+  ) {}
+
   /* ===================== LAZY USER VIEW ===================== */
 
   @GetMapping("/user/years")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
   public List<YearRow> userYears(@RequestParam Long userId) {
     return shiftRepo.findInRange(
             OffsetDateTime.parse("2000-01-01T00:00:00Z"),
@@ -226,6 +248,7 @@ public NetSalaryResponse payslipForStaff(
   }
 
   @GetMapping("/user/months")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
   public List<MonthRow> userMonths(@RequestParam Long userId, @RequestParam int year) {
     OffsetDateTime start = OffsetDateTime.parse(year + "-01-01T00:00:00Z");
     OffsetDateTime end = OffsetDateTime.parse((year + 1) + "-01-01T00:00:00Z");
@@ -246,6 +269,7 @@ public NetSalaryResponse payslipForStaff(
   }
 
   @GetMapping("/user/month")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
   public List<DayRow> userMonthDays(@RequestParam Long userId, @RequestParam int year, @RequestParam int month) {
     String mm = String.format("%02d", month);
     OffsetDateTime start = OffsetDateTime.parse(year + "-" + mm + "-01T00:00:00Z");

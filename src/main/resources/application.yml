@@ -1,7 +1,7 @@
 app:
   jwt:
-    secret: CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS
-    accessTokenMinutes: ${APP_JWT_EXPIRES_MIN:60}
+    secret: ${APP_JWT_SECRET}
+    accessTokenMinutes: ${APP_JWT_EXPIRES_MIN:15}
     issuer: ${APP_JWT_ISSUER:nordicframtiden}
 
 server:
@@ -29,9 +29,9 @@ spring:
             enable: ${MAIL_STARTTLS_ENABLE:true}
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://pg-nordidcframtiden-nordicframtiden.h.aivencloud.com:21542/defaultdb?sslmode=require
-    username: avnadmin
-    password: AVNS__6SVGDfEFlW9YSxzCFE
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
   data:
     redis:
       host: localhost
@@ -52,4 +52,3 @@ spring:
     enabled: ${SPRING_FLYWAY_ENABLED:true}
     locations: classpath:db/migration
     baseline-on-migrate: false
-  

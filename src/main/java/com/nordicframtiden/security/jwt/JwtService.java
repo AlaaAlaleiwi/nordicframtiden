@@ -39,21 +39,7 @@ public class JwtService {
         .setIssuedAt(Date.from(now))
         .setExpiration(Date.from(exp))
         .addClaims(claims) // roles + perms go here
-        .signWith(key, SignatureAlgorithm.HS256)
-        .compact();
-  }
-
-  public String generateRefreshToken(String subject, Map<String, Object> claims) {
-    Instant now = Instant.now();
-    Instant exp = now.plus(30, ChronoUnit.DAYS);
-
-    return Jwts.builder()
-        .setIssuer(issuer)
-        .setSubject(subject)
-        .setIssuedAt(Date.from(now))
-        .setExpiration(Date.from(exp))
-        .addClaims(claims)               // ✅ include roles/perms (optional but ok)
-        .claim("type", "refresh")
+        .claim("type", "access")
         .signWith(key, SignatureAlgorithm.HS256)
         .compact();
   }
@@ -70,16 +56,11 @@ public class JwtService {
     return parse(token).getBody().getSubject();
   }
 
-  public Claims validateRefreshToken(String token) {
+  public Claims validateAccessToken(String token) {
     Claims claims = parse(token).getBody();
-    if (!"refresh".equals(claims.get("type"))) {
-      throw new JwtException("Token is not a refresh token");
+    if (!"access".equals(claims.get("type"))) {
+      throw new JwtException("Token is not an access token");
     }
     return claims;
-  }
-
-  public boolean isRefreshToken(String token) {
-    Claims claims = parse(token).getBody();
-    return "refresh".equals(claims.get("type"));
   }
 }

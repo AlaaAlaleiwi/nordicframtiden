@@ -21,7 +21,6 @@ class EmailServiceTest {
             "host", "smtp.example.com",
             "port", "587",
             "username", "user@example.com",
-            "password", "secret",
             "from", "noreply@example.com",
             "to", "admin@example.com"
         ));

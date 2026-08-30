@@ -18,7 +18,6 @@ import java.util.Set;
 
 @RestController
 @RequestMapping("/api/users")
- @PreAuthorize("hasAnyRole('USER','STAFF','ADMIN')")
 public class UserManagementController {
 
   private final UserService userService;
@@ -72,6 +71,15 @@ public class UserManagementController {
       Set<Permission> permissions // ✅ NEW (optional; only applied to STAFF)
   ) {}
 
+  public record UpdateOwnProfileRequest(
+      String fullName,
+      @Email String email,
+      String phone,
+      Integer yearOfBirth,
+      String countyCode,
+      String municipalityCode
+  ) {}
+
   private static UserResponse toResponse(UserService.DetailedUser u, String password) {
     return new UserResponse(
         u.id(),
@@ -110,6 +118,7 @@ public class UserManagementController {
 
   // ✅ Anyone logged-in can call /me
   @GetMapping("/me")
+  @PreAuthorize("isAuthenticated()")
   public ResponseEntity<UserResponse> me(Authentication auth) {
     if (auth == null || !auth.isAuthenticated()) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -120,8 +129,24 @@ public class UserManagementController {
     return ResponseEntity.ok(toResponse(user, null));
   }
 
+  @PutMapping("/me")
+  @PreAuthorize("isAuthenticated()")
+  public UserResponse updateMe(Authentication auth, @RequestBody UpdateOwnProfileRequest req) {
+    var updated = userService.updateOwnProfile(
+        auth.getName(),
+        req.fullName(),
+        req.email(),
+        req.phone(),
+        req.yearOfBirth(),
+        req.countyCode(),
+        req.municipalityCode()
+    );
+    return toResponse(updated, null);
+  }
+
   // ✅ STAFF/ADMIN can view user
   @GetMapping("/{id}")
+  @PreAuthorize("@accountAuthorization.canManage(authentication, #id)")
   public UserResponse getOne(@PathVariable Long id) {
     var r = userService.getDetailedById(id);
     return toResponse(r, null);
@@ -129,6 +154,7 @@ public class UserManagementController {
 
   // ✅ STAFF/ADMIN can list
   @GetMapping
+  @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PERM_PEOPLE') and #role == T(com.nordicframtiden.security.model.Role).USER)")
   public List<UserResponse> list(@RequestParam Role role) {
     return userService.listDetailedByRole(role).stream()
         .map(r -> toResponse(r, null))
@@ -137,6 +163,7 @@ public class UserManagementController {
 
   // ✅ STAFF/ADMIN can create users (your UI does)
   @PostMapping
+  @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PERM_PEOPLE') and #role == T(com.nordicframtiden.security.model.Role).USER)")
   public UserResponse create(@RequestParam Role role, @RequestBody CreateUserRequest req) {
     boolean enabled = req.enabled() == null || req.enabled();
 
@@ -158,8 +185,8 @@ public class UserManagementController {
 
   // ✅ STAFF/ADMIN can update
   @PutMapping("/{id}")
+  @PreAuthorize("@accountAuthorization.canManage(authentication, #id)")
   public UserResponse update(@PathVariable Long id, @RequestBody UpdateUserRequest req) {
-    System.out.println(req);
     var updated = userService.updateWithProfile(
         id,
         req.fullName(),
@@ -185,6 +212,7 @@ public class UserManagementController {
 
   // ✅ ADMIN only reset-password
   @PostMapping("/{id}/reset-password")
+  @PreAuthorize("hasRole('ADMIN')")
   public UserResponse resetPassword(@PathVariable Long id) {
     var updated = userService.resetPassword(id);
     return toResponse(updated, updated.password());

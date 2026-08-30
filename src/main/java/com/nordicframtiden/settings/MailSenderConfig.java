@@ -13,7 +13,7 @@ public class MailSenderConfig {
 
     @Bean
     public JavaMailSender javaMailSender(AppSettingsService appSettingsService) {
-        Map<String, String> mail = appSettingsService.getMailSettings();
+        Map<String, String> mail = appSettingsService.getMailRuntimeSettings();
 
         JavaMailSenderImpl sender = new JavaMailSenderImpl();
         String host = mail.getOrDefault("host", "localhost");

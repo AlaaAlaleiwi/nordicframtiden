@@ -3,9 +3,10 @@ package com.nordicframtiden.security.jwt;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import com.nordicframtiden.security.model.AppUser;
+import com.nordicframtiden.security.repo.AppUserRepository;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
@@ -14,6 +15,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -22,10 +25,14 @@ import java.util.List;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-  private final JwtService jwtService;
+  private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
-  public JwtAuthenticationFilter(JwtService jwtService) {
+  private final JwtService jwtService;
+  private final AppUserRepository userRepository;
+
+  public JwtAuthenticationFilter(JwtService jwtService, AppUserRepository userRepository) {
     this.jwtService = jwtService;
+    this.userRepository = userRepository;
   }
 
   @Override
@@ -48,10 +55,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     try {
-      Claims claims = jwtService.parse(token).getBody();
+      Claims claims = jwtService.validateAccessToken(token);
       String username = claims.getSubject();
+      AppUser user = userRepository.findByUsername(username)
+          .filter(AppUser::isEnabled)
+          .orElseThrow(() -> new IllegalArgumentException("Active user not found"));
 
-      var authorities = buildAuthorities(claims);
+      var authorities = buildAuthorities(user);
 
       var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
       auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
@@ -59,54 +69,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     } catch (Exception e) {
       SecurityContextHolder.clearContext();
-      System.out.println("JWT invalid/expired: " + request.getMethod() + " " + request.getRequestURI()
-          + " -> " + e.getMessage());
+      log.debug("Bearer token rejected for {} {}", request.getMethod(), request.getRequestURI());
     }
 
     chain.doFilter(request, response);
   }
 
-  @SuppressWarnings("unchecked")
-  private List<GrantedAuthority> buildAuthorities(Claims claims) {
-    List<String> roles = (List<String>) claims.getOrDefault("roles", List.of());
-    List<String> perms = (List<String>) claims.getOrDefault("perms", List.of());
-
+  private List<GrantedAuthority> buildAuthorities(AppUser user) {
     List<GrantedAuthority> auths = new ArrayList<>();
 
-    // ✅ roles: accept "ADMIN" or "ROLE_ADMIN"
-    for (String r : roles) {
-      if (r == null || r.isBlank()) continue;
-      String name = r.startsWith("ROLE_") ? r : "ROLE_" + r;
-      auths.add(new SimpleGrantedAuthority(name));
-    }
-
-    // ✅ perms: accept "PEOPLE" or "PERM_PEOPLE"
-    for (String p : perms) {
-      if (p == null || p.isBlank()) continue;
-      String name = p.startsWith("PERM_") ? p : "PERM_" + p;
-      auths.add(new SimpleGrantedAuthority(name));
-    }
+    user.getRoles().forEach(role ->
+        auths.add(new SimpleGrantedAuthority("ROLE_" + role.name())));
+    user.getPermissions().forEach(permission ->
+        auths.add(new SimpleGrantedAuthority("PERM_" + permission.name())));
 
     return auths;
   }
 
   private String resolveToken(HttpServletRequest request) {
-    // 1) Authorization header
     String header = request.getHeader(HttpHeaders.AUTHORIZATION);
     if (header != null && header.startsWith("Bearer ")) {
       return header.substring(7);
     }
-
-    // 2) ACCESS_TOKEN cookie
-    Cookie[] cookies = request.getCookies();
-    if (cookies != null) {
-      for (Cookie c : cookies) {
-        if ("ACCESS_TOKEN".equals(c.getName())) {
-          return c.getValue();
-        }
-      }
-    }
-
     return null;
   }
 }
