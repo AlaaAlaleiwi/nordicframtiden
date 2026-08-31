@@ -69,3 +69,6 @@ logs/
 # Coverage / Test
 # =====================
 coverage/
+
+# GitHub Actions Workload Identity Federation credentials
+gha-creds-*.json

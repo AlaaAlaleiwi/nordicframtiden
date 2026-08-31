@@ -24,20 +24,41 @@ public class AppSettingsService {
     @Value("${spring.mail.password:}")
     private String smtpPassword = "";
 
+    @Value("${app.mail.enabled:false}")
+    private String defaultMailEnabled = "false";
+
+    @Value("${app.mail.provider:smtp}")
+    private String defaultMailProvider = "smtp";
+
+    @Value("${spring.mail.host:}")
+    private String defaultMailHost = "";
+
+    @Value("${spring.mail.port:587}")
+    private String defaultMailPort = "587";
+
+    @Value("${spring.mail.username:}")
+    private String defaultMailUsername = "";
+
+    @Value("${app.mail.from:}")
+    private String defaultMailFrom = "";
+
+    @Value("${app.mail.to:}")
+    private String defaultMailTo = "";
+
     public AppSettingsService(AppSettingRepository repo) {
         this.repo = repo;
     }
 
     public Map<String, String> getMailSettings() {
         return Map.of(
-            "enabled", get(MAIL_ENABLED, "false"),
-            "provider", get(MAIL_PROVIDER, "smtp"),
-            "host", get(MAIL_HOST, ""),
-            "port", get(MAIL_PORT, "587"),
-            "username", get(MAIL_USERNAME, ""),
+            "enabled", get(MAIL_ENABLED, defaultMailEnabled),
+            "provider", get(MAIL_PROVIDER, defaultMailProvider),
+            "host", get(MAIL_HOST, defaultMailHost),
+            "port", get(MAIL_PORT, defaultMailPort),
+            "username", get(MAIL_USERNAME, defaultMailUsername),
             "passwordConfigured", Boolean.toString(smtpPassword != null && !smtpPassword.isBlank()),
-            "from", get(MAIL_FROM, ""),
-            "to", get(MAIL_TO, "")
+            "from", get(MAIL_FROM, defaultMailFrom),
+            "to", get(MAIL_TO, defaultMailTo)
         );
     }
 
@@ -60,11 +81,11 @@ public class AppSettingsService {
     }
 
     public boolean isMailEnabled() {
-        return Boolean.parseBoolean(get(MAIL_ENABLED, "false"));
+        return Boolean.parseBoolean(get(MAIL_ENABLED, defaultMailEnabled));
     }
 
     public String getMailProvider() {
-        return get(MAIL_PROVIDER, "smtp");
+        return get(MAIL_PROVIDER, defaultMailProvider);
     }
 
     public String getRaw(String key, String defaultValue) {
