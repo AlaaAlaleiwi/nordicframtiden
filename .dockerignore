@@ -1,6 +1,16 @@
-target
 .git
+.github
 .idea
 .vscode
 *.iml
 .DS_Store
+.env
+*.env
+target
+*.log
+README.md
+HELP.md
+CRITICAL_FIXES.md
+BEST_PRACTICES_AND_TDD.md
+docker-compose.yml
+package-lock.json

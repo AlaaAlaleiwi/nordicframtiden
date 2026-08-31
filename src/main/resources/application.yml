@@ -5,7 +5,9 @@ app:
     issuer: ${APP_JWT_ISSUER:nordicframtiden}
 
 server:
-  port: 8080
+  # Cloud Run injects PORT. Keep 8080 as the local/default container port.
+  port: ${PORT:8080}
+  address: 0.0.0.0
   error:
     include-message: always
     include-binding-errors: always
@@ -34,8 +36,8 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD}
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
   cache:
     type: redis
