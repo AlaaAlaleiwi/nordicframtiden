@@ -3,6 +3,11 @@ app:
     secret: ${APP_JWT_SECRET}
     accessTokenMinutes: ${APP_JWT_EXPIRES_MIN:15}
     issuer: ${APP_JWT_ISSUER:nordicframtiden}
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    provider: ${MAIL_PROVIDER:smtp}
+    from: ${MAIL_FROM:}
+    to: ${MAIL_TO:}
 
 server:
   # Cloud Run injects PORT. Keep 8080 as the local/default container port.

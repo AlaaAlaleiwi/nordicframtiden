@@ -1,0 +1,94 @@
+name: Test and deploy backend
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: backend-production
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: nordicframtiden
+  PROJECT_NUMBER: "644311628279"
+  REGION: europe-north1
+  SERVICE: nordicframtiden
+  DEPLOYER_SERVICE_ACCOUNT: github-actions-deployer@nordicframtiden.iam.gserviceaccount.com
+  WORKLOAD_IDENTITY_PROVIDER: projects/644311628279/locations/global/workloadIdentityPools/github-actions/providers/github
+
+jobs:
+  verify:
+    name: Unit and integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: nordicframtiden
+          POSTGRES_USER: nordic
+          POSTGRES_PASSWORD: nordic
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nordic -d nordicframtiden"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_JWT_SECRET: github-actions-only-secret-at-least-32-bytes-long
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/nordicframtiden
+      SPRING_DATASOURCE_USERNAME: nordic
+      SPRING_DATASOURCE_PASSWORD: nordic
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      MAIL_ENABLED: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Run unit and integration tests
+        run: mvn --batch-mode --no-transfer-progress verify
+
+  deploy:
+    name: Deploy backend
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Deploy to Cloud Run
+        run: >-
+          gcloud run deploy "${SERVICE}"
+          --project="${PROJECT_ID}"
+          --region="${REGION}"
+          --source=.
+          --port=8080
+          --quiet

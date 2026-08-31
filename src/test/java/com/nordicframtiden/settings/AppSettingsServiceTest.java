@@ -17,6 +17,29 @@ import org.springframework.test.util.ReflectionTestUtils;
 class AppSettingsServiceTest {
 
     @Test
+    void environmentConfigurationProvidesMailDefaults() {
+        AppSettingRepository repo = mock(AppSettingRepository.class);
+        AppSettingsService service = new AppSettingsService(repo);
+        ReflectionTestUtils.setField(service, "defaultMailEnabled", "true");
+        ReflectionTestUtils.setField(service, "defaultMailProvider", "smtp");
+        ReflectionTestUtils.setField(service, "defaultMailHost", "smtp.gmail.com");
+        ReflectionTestUtils.setField(service, "defaultMailPort", "587");
+        ReflectionTestUtils.setField(service, "defaultMailUsername", "sender@example.com");
+        ReflectionTestUtils.setField(service, "defaultMailFrom", "sender@example.com");
+        ReflectionTestUtils.setField(service, "defaultMailTo", "recipient@example.com");
+
+        Map<String, String> result = service.getMailSettings();
+
+        assertEquals("true", result.get("enabled"));
+        assertEquals("smtp", result.get("provider"));
+        assertEquals("smtp.gmail.com", result.get("host"));
+        assertEquals("587", result.get("port"));
+        assertEquals("sender@example.com", result.get("username"));
+        assertEquals("sender@example.com", result.get("from"));
+        assertEquals("recipient@example.com", result.get("to"));
+    }
+
+    @Test
     void publicMailSettingsNeverExposeStoredPassword() {
         AppSettingRepository repo = mock(AppSettingRepository.class);
         when(repo.findByKey("mail.password"))
