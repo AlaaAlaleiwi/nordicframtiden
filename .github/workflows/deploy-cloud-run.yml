@@ -65,6 +65,8 @@ jobs:
           cache: maven
       - name: Run unit and integration tests
         run: mvn --batch-mode --no-transfer-progress verify
+      - name: Build deployment container
+        run: docker build --tag nordicframtiden-backend:ci .
 
   deploy:
     name: Deploy backend
