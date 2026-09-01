@@ -93,4 +93,6 @@ jobs:
           --region="${REGION}"
           --source=.
           --port=8080
+          --update-env-vars=MAIL_ENABLED=true,MAIL_PROVIDER=smtp,MAIL_HOST=smtp.gmail.com,MAIL_PORT=587,MAIL_USERNAME=alaa.alkassar87@gmail.com,MAIL_FROM=alaa.alkassar87@gmail.com,MAIL_TO=alaa.alkassar87@gmail.com,MAIL_SMTP_AUTH=true,MAIL_STARTTLS_ENABLE=true
+          --update-secrets=MAIL_PASSWORD=MAIL_PASSWORD:latest
           --quiet
