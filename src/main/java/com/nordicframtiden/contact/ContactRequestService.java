@@ -1,5 +1,8 @@
 package com.nordicframtiden.contact;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -8,6 +11,8 @@ import java.util.List;
 
 @Service
 public class ContactRequestService {
+
+  private static final Logger log = LoggerFactory.getLogger(ContactRequestService.class);
 
   private final ContactRequestRepository repo;
   private final ContactNotificationService contactNotificationService;
@@ -46,7 +51,12 @@ public class ContactRequestService {
     c.setMessage(msg);
 
     ContactRequest saved = repo.save(c);
-    contactNotificationService.sendNewContactRequestNotification(saved);
+    try {
+      contactNotificationService.sendNewContactRequestNotification(saved);
+    } catch (MailException e) {
+      log.error("Contact request {} was saved, but its notification email could not be sent",
+          saved.getId(), e);
+    }
     return saved;
   }
 
@@ -63,7 +73,12 @@ public class ContactRequestService {
     ContactRequest saved = repo.save(c);
 
     if (nextNote != null && !nextNote.isBlank() && !nextNote.equals(previousNote)) {
-      contactNotificationService.sendAdminReplyNotification(saved, nextNote);
+      try {
+        contactNotificationService.sendAdminReplyNotification(saved, nextNote);
+      } catch (MailException e) {
+        log.error("Contact request {} was updated, but its reply email could not be sent",
+            saved.getId(), e);
+      }
     }
 
     return saved;
