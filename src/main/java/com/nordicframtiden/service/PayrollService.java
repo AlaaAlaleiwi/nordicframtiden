@@ -92,18 +92,11 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     }
 
     var range = monthRangeUTC(year, month);
-    var shiftsA = scheduleService.listForUser(userId, range.start(), range.end()); // implement/exists
-    var shiftsB = staffScheduleService.listForUser(userId, range.start(), range.end()); // implement/exists
+    var shifts = scheduleService.listForUser(userId, range.start(), range.end());
 
     BigDecimal totalHours = BigDecimal.ZERO;
     BigDecimal gross = BigDecimal.ZERO;
-    for (var s : shiftsA) {
-      Instant start = s.getStartAt().toInstant();
-      Instant end = s.getEndAt().toInstant();
-      totalHours = totalHours.add(hoursBetween(start, end));
-      gross = gross.add(shiftGross(start, end, profile.getHourlyCost()));
-    }
-    for (var s : shiftsB) {
+    for (var s : shifts) {
       Instant start = s.getStartAt().toInstant();
       Instant end = s.getEndAt().toInstant();
       totalHours = totalHours.add(hoursBetween(start, end));
