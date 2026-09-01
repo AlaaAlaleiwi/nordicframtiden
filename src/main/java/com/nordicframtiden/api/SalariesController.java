@@ -120,12 +120,7 @@ public NetSalaryResponse payslipForStaff(
       @RequestParam int month,
       Authentication auth
   ) {
-    String username = auth.getName();
-    Long userId = userRepo.findByUsername(username)
-        .orElseThrow(() -> new IllegalArgumentException("User not found: " + username))
-        .getId();
-
-    return payrollService.netSalaryForUserMonth(userId, year, month);
+    return payrollService.netSalaryForUserMonth(currentUserId(auth), year, month);
   }
 
   private static double round2(double v) {
@@ -234,6 +229,16 @@ public NetSalaryResponse payslipForStaff(
   @GetMapping("/user/years")
   @PreAuthorize(CAN_MANAGE_SALARIES)
   public List<YearRow> userYears(@RequestParam Long userId) {
+    return yearsForUser(userId);
+  }
+
+  @GetMapping("/me/years")
+  @PreAuthorize("isAuthenticated()")
+  public List<YearRow> myYears(Authentication auth) {
+    return yearsForUser(currentUserId(auth));
+  }
+
+  private List<YearRow> yearsForUser(Long userId) {
     return shiftRepo.findInRange(
             OffsetDateTime.parse("2000-01-01T00:00:00Z"),
             OffsetDateTime.now().plusYears(1),
@@ -250,6 +255,16 @@ public NetSalaryResponse payslipForStaff(
   @GetMapping("/user/months")
   @PreAuthorize(CAN_MANAGE_SALARIES)
   public List<MonthRow> userMonths(@RequestParam Long userId, @RequestParam int year) {
+    return monthsForUser(userId, year);
+  }
+
+  @GetMapping("/me/months")
+  @PreAuthorize("isAuthenticated()")
+  public List<MonthRow> myMonths(@RequestParam int year, Authentication auth) {
+    return monthsForUser(currentUserId(auth), year);
+  }
+
+  private List<MonthRow> monthsForUser(Long userId, int year) {
     OffsetDateTime start = OffsetDateTime.parse(year + "-01-01T00:00:00Z");
     OffsetDateTime end = OffsetDateTime.parse((year + 1) + "-01-01T00:00:00Z");
 
@@ -271,6 +286,20 @@ public NetSalaryResponse payslipForStaff(
   @GetMapping("/user/month")
   @PreAuthorize(CAN_MANAGE_SALARIES)
   public List<DayRow> userMonthDays(@RequestParam Long userId, @RequestParam int year, @RequestParam int month) {
+    return monthDaysForUser(userId, year, month);
+  }
+
+  @GetMapping("/me/month")
+  @PreAuthorize("isAuthenticated()")
+  public List<DayRow> myMonthDays(
+      @RequestParam int year,
+      @RequestParam int month,
+      Authentication auth
+  ) {
+    return monthDaysForUser(currentUserId(auth), year, month);
+  }
+
+  private List<DayRow> monthDaysForUser(Long userId, int year, int month) {
     String mm = String.format("%02d", month);
     OffsetDateTime start = OffsetDateTime.parse(year + "-" + mm + "-01T00:00:00Z");
     OffsetDateTime end = month == 12
@@ -293,6 +322,13 @@ public NetSalaryResponse payslipForStaff(
   }
 
   /* ===================== HELPERS ===================== */
+
+  private Long currentUserId(Authentication auth) {
+    String username = auth.getName();
+    return userRepo.findByUsername(username)
+        .orElseThrow(() -> new IllegalArgumentException("User not found: " + username))
+        .getId();
+  }
 
   private ShiftLine toUserLine(ScheduleShift s) {
     var p = s.getPharmacy();

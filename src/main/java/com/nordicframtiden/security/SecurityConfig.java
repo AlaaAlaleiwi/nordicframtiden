@@ -42,7 +42,7 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/settings/**").hasRole("ADMIN")
 
-                        .requestMatchers("/api/salaries/payslip/me").authenticated()
+                        .requestMatchers("/api/salaries/payslip/me", "/api/salaries/me/**").authenticated()
                         .requestMatchers("/api/salaries/**")
                         .hasAnyAuthority("ROLE_ADMIN", "PERM_SALARIES")
 
