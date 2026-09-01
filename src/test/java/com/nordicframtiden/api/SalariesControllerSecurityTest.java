@@ -112,6 +112,28 @@ class SalariesControllerSecurityTest {
     }
 
     @Test
+    @WithMockUser(username = "alice", roles = "USER")
+    void userCanReadOwnSalaryHistoryWithoutSupplyingUserId() throws Exception {
+        AppUser alice = mock(AppUser.class);
+        when(alice.getId()).thenReturn(7L);
+        when(userRepo.findByUsername("alice")).thenReturn(Optional.of(alice));
+        when(shiftRepo.findInRange(any(), any(), eq(null), eq(7L))).thenReturn(List.of());
+
+        mvc.perform(get("/api/salaries/me/years"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").isArray());
+
+        mvc.perform(get("/api/salaries/me/months").param("year", "2026"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").isArray());
+
+        mvc.perform(get("/api/salaries/me/month")
+                .param("year", "2026").param("month", "8"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
     @WithMockUser(authorities = {"ROLE_STAFF", "PERM_PEOPLE"})
     void staffWithoutSalaryPermissionCannotReadReports() throws Exception {
         mvc.perform(get("/api/salaries/month")
