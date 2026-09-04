@@ -86,18 +86,21 @@ public class AvailabilityController {
   }
 
   @GetMapping
+  @PreAuthorize("hasRole('ADMIN') or hasAuthority('PERM_AVAILABILITY')")
  
   public List<AvailabilityDto> all() {
     return service.all().stream().map(this::toDto).toList();
   }
 
   @PatchMapping("/{id}/status")
+  @PreAuthorize("hasRole('ADMIN') or hasAuthority('PERM_AVAILABILITY')")
  
   public void updateStatus(@PathVariable Long id, @RequestBody StatusUpdateRequest req) {
     service.setStatus(id, req.status());   // ✅ enum type matches
   }
 
   @GetMapping("/range")
+  @PreAuthorize("hasRole('ADMIN') or hasAuthority('PERM_AVAILABILITY')")
  
   public List<AvailabilityRow> range(@RequestParam LocalDate start, @RequestParam LocalDate end) {
     return service.getApprovedOverlapping(start, end);

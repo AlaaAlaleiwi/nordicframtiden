@@ -5,5 +5,6 @@ public enum Permission {
   PHARMACIES,
   SCHEDULE,
   SALARIES,
-  CONTACTS
+  CONTACTS,
+  AVAILABILITY
 }
