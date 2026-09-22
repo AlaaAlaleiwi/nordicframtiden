@@ -33,13 +33,14 @@ public class ChatController {
 
   public record ParticipantDto(Long id, String username, String displayName, boolean online) {}
   public record RoomDto(Long id, String type, String name, String description, boolean privateChannel,
-                        boolean member, long unreadCount, List<ParticipantDto> participants) {}
+                        boolean member, boolean canManage, long unreadCount, List<ParticipantDto> participants) {}
   public record ReactionDto(String emoji, long count, boolean mine) {}
   public record MessageDto(Long id, Long roomId, Long parentId, ParticipantDto sender, String body,
                            Instant createdAt, Instant editedAt, boolean deleted, long replyCount,
                            List<ReactionDto> reactions) {}
   public record CreateChannelRequest(@NotBlank @Size(max=80) String name, @Size(max=500) String description,
                                      boolean privateChannel, List<Long> memberIds) {}
+  public record AddChannelMembersRequest(@NotEmpty List<@NotNull Long> userIds) {}
   public record DirectRequest(@NotNull Long userId) {}
   public record SendMessageRequest(Long parentId, @NotBlank @Size(max=4000) String body) {}
   public record EditMessageRequest(@NotBlank @Size(max=4000) String body) {}
@@ -71,6 +72,12 @@ public class ChatController {
 
   @PostMapping("/rooms/{roomId}/join") @ResponseStatus(HttpStatus.NO_CONTENT)
   public void join(Authentication auth, @PathVariable Long roomId) { service.join(auth, roomId); }
+
+  @PostMapping("/channels/{roomId}/members")
+  public RoomDto addChannelMembers(Authentication auth, @PathVariable Long roomId,
+                                   @Valid @RequestBody AddChannelMembersRequest request) {
+    return room(service.addChannelMembers(auth, roomId, request.userIds()), service.current(auth));
+  }
 
   @GetMapping("/rooms/{roomId}/messages")
   public List<MessageDto> messages(Authentication auth, @PathVariable Long roomId,
@@ -114,8 +121,11 @@ public class ChatController {
       displayName = roomParticipants.stream().filter(person -> !person.id().equals(me.getId()))
           .map(ParticipantDto::displayName).findFirst().orElse("Direct message");
     }
+    boolean canManage = room.getType() == ChatRoom.Type.CHANNEL
+        && room.getCreatedBy().getId().equals(me.getId());
     return new RoomDto(room.getId(), room.getType().name(), displayName, room.getDescription(),
-        room.isPrivateChannel(), isMember, isMember ? service.unreadCount(room.getId(), me.getId()) : 0, roomParticipants);
+        room.isPrivateChannel(), isMember, canManage,
+        isMember ? service.unreadCount(room.getId(), me.getId()) : 0, roomParticipants);
   }
 
   private MessageDto message(ChatMessage message, AppUser me) {

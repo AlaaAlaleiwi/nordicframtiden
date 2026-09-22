@@ -84,6 +84,24 @@ public class ChatService {
     if (!members.existsByRoomIdAndUserId(roomId, user.getId())) addMember(room, user);
   }
 
+  @Transactional
+  public ChatRoom addChannelMembers(Authentication auth, Long roomId, List<Long> userIds) {
+    AppUser user = current(auth);
+    ChatRoom room = room(roomId);
+    if (room.getType() != ChatRoom.Type.CHANNEL
+        || !room.getCreatedBy().getId().equals(user.getId())) {
+      throw new ChatAccessDeniedException();
+    }
+    for (Long userId : new LinkedHashSet<>(userIds == null ? List.of() : userIds)) {
+      if (members.existsByRoomIdAndUserId(roomId, userId)) continue;
+      AppUser member = users.findById(userId).filter(AppUser::isEnabled)
+          .orElseThrow(() -> new IllegalArgumentException("User not found"));
+      addMember(room, member);
+    }
+    events.publish(roomId, "channel.members.updated", roomId);
+    return room;
+  }
+
   @Transactional(readOnly = true)
   public List<ChatMessage> messages(Authentication auth, Long roomId, Long parentId, int limit) {
     AppUser user = current(auth);
