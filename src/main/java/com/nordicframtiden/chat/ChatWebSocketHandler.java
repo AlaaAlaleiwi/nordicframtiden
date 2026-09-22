@@ -14,11 +14,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChatWebSocketHandler extends TextWebSocketHandler implements ChatEventPublisher, ChatPresence {
   private final ObjectMapper objectMapper;
   private final ChatRoomMemberRepository members;
+  private final CallSignalingRouter callRouter;
   private final Map<String, Set<WebSocketSession>> sessions = new ConcurrentHashMap<>();
 
-  public ChatWebSocketHandler(ObjectMapper objectMapper, ChatRoomMemberRepository members) {
+  public ChatWebSocketHandler(ObjectMapper objectMapper, ChatRoomMemberRepository members,
+                              CallSignalingRouter callRouter) {
     this.objectMapper = objectMapper;
     this.members = members;
+    this.callRouter = callRouter;
   }
 
   @Override
@@ -33,10 +36,26 @@ public class ChatWebSocketHandler extends TextWebSocketHandler implements ChatEv
   public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
     if (session.getPrincipal() == null) return;
     String username = session.getPrincipal().getName();
+    callRouter.disconnected(username);
     Set<WebSocketSession> userSessions = sessions.get(username);
     if (userSessions != null) {
       userSessions.remove(session);
       if (userSessions.isEmpty()) { sessions.remove(username); broadcastPresence(username, false); }
+    }
+  }
+
+  @Override
+  protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+    if (session.getPrincipal() == null) return;
+    try {
+      var route = callRouter.route(
+          session.getPrincipal().getName(),
+          objectMapper.readTree(message.getPayload()));
+      sendTo(route.recipients(), route.event());
+    } catch (RuntimeException | IOException error) {
+      sendTo(
+          Set.of(session.getPrincipal().getName()),
+          Map.of("type", "call.error", "message", error.getMessage()));
     }
   }
 
