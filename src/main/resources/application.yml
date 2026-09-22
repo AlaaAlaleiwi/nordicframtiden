@@ -8,6 +8,15 @@ app:
     provider: ${MAIL_PROVIDER:smtp}
     from: ${MAIL_FROM:}
     to: ${MAIL_TO:}
+  firebase:
+    enabled: ${APP_FIREBASE_ENABLED:false}
+    project-id: ${APP_FIREBASE_PROJECT_ID:}
+    web-api-key: ${APP_FIREBASE_WEB_API_KEY:}
+    auth-domain: ${APP_FIREBASE_AUTH_DOMAIN:}
+    storage-bucket: ${APP_FIREBASE_STORAGE_BUCKET:}
+    messaging-sender-id: ${APP_FIREBASE_MESSAGING_SENDER_ID:}
+    app-id: ${APP_FIREBASE_APP_ID:}
+    vapid-public-key: ${APP_FIREBASE_VAPID_PUBLIC_KEY:}
 
 server:
   # Cloud Run injects PORT. Keep 8080 as the local/default container port.

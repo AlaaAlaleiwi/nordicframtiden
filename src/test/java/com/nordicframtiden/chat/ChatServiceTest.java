@@ -22,7 +22,8 @@ class ChatServiceTest {
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events);
+    ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
     AppUser user = user(7L, "anna");
 
     when(users.findByUsername("anna")).thenReturn(Optional.of(user));
@@ -41,7 +42,8 @@ class ChatServiceTest {
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events);
+    ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
     AppUser user = user(7L, "anna");
     ChatRoom room = new ChatRoom();
     room.setId(12L);
@@ -60,6 +62,7 @@ class ChatServiceTest {
     assertThat(saved.getBody()).isEqualTo("Hello team");
     assertThat(saved.getSender()).isSameAs(user);
     assertThat(saved.getRoom()).isSameAs(room);
+    org.mockito.Mockito.verify(notifications).notifyNewMessage(saved);
   }
 
   @Test
@@ -70,7 +73,8 @@ class ChatServiceTest {
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events);
+    ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
     AppUser author = user(7L, "anna");
     AppUser other = user(8L, "erik");
     ChatMessage message = new ChatMessage();

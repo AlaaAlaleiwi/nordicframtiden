@@ -54,3 +54,30 @@ gcloud run deploy nordicframtiden-api \
 If mail is not configured, omit `MAIL_PASSWORD=mail-password:latest` and supply the non-secret mail settings only when needed. For a private Redis or PostgreSQL endpoint, add the appropriate `--network`, `--subnet`, and `--vpc-egress` options to the deployment.
 
 After Cloud Run reports a successful revision, deploy Firebase Hosting from the frontend repository. The Hosting deployment checks that this service already exists.
+# Firebase chat notifications
+
+Chat push notifications are optional and disabled by default. The frontend reads the
+public Firebase web configuration from the authenticated backend; no Firebase server
+credentials or private VAPID key are sent to the browser.
+
+Configure these Cloud Run environment variables on the backend service:
+
+```text
+APP_FIREBASE_ENABLED=true
+APP_FIREBASE_PROJECT_ID=<firebase-project-id>
+APP_FIREBASE_WEB_API_KEY=<firebase-web-api-key>
+APP_FIREBASE_AUTH_DOMAIN=<firebase-auth-domain>
+APP_FIREBASE_STORAGE_BUCKET=<firebase-storage-bucket>
+APP_FIREBASE_MESSAGING_SENDER_ID=<firebase-sender-id>
+APP_FIREBASE_APP_ID=<firebase-web-app-id>
+APP_FIREBASE_VAPID_PUBLIC_KEY=<firebase-web-push-public-key>
+```
+
+The Cloud Run runtime service account must have permission to send Firebase Cloud
+Messaging messages in `APP_FIREBASE_PROJECT_ID`. The backend uses Application Default
+Credentials; do not add a service-account JSON key to the repository or container.
+
+Push payloads are intentionally generic. Firebase receives the installation target and
+the text “You have a new message”, but not the sender, message body, room ID, or chat URL.
+Users opt in with the bell button in Messages, and each browser installation is stored in
+`chat_push_subscription` by Flyway migration `V22`.

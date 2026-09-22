@@ -19,16 +19,19 @@ public class ChatService {
   private final ChatReactionRepository reactions;
   private final AppUserRepository users;
   private final ChatEventPublisher events;
+  private final ChatPushNotificationService notifications;
 
   public ChatService(ChatRoomRepository rooms, ChatRoomMemberRepository members,
                      ChatMessageRepository messages, ChatReactionRepository reactions,
-                     AppUserRepository users, ChatEventPublisher events) {
+                     AppUserRepository users, ChatEventPublisher events,
+                     ChatPushNotificationService notifications) {
     this.rooms = rooms;
     this.members = members;
     this.messages = messages;
     this.reactions = reactions;
     this.users = users;
     this.events = events;
+    this.notifications = notifications;
   }
 
   @Transactional(readOnly = true)
@@ -111,6 +114,7 @@ public class ChatService {
     result.setBody(requireText(body, 4000, "Message"));
     result = messages.save(result);
     events.publish(roomId, "message.created", result.getId());
+    notifications.notifyNewMessage(result);
     return result;
   }
 
