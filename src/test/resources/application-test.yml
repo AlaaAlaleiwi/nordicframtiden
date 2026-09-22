@@ -1,0 +1,14 @@
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:test-only-jwt-secret-at-least-32-bytes}
+
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nordicframtiden}
+    username: ${SPRING_DATASOURCE_USERNAME:nordic}
+    password: ${SPRING_DATASOURCE_PASSWORD:nordic}
+  flyway:
+    enabled: true
+  cache:
+    type: none
