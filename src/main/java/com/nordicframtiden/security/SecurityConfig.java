@@ -42,6 +42,8 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/settings/**").hasRole("ADMIN")
 
+                        .requestMatchers("/api/chat/**", "/ws/chat").authenticated()
+
                         .requestMatchers("/api/salaries/payslip/me", "/api/salaries/me/**").authenticated()
                         .requestMatchers("/api/salaries/**")
                         .hasAnyAuthority("ROLE_ADMIN", "PERM_SALARIES")
