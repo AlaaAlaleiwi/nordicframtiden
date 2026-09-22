@@ -87,4 +87,40 @@ class JwtAuthenticationFilterTest {
             .extracting("authority")
             .containsExactlyInAnyOrder("ROLE_STAFF", "PERM_SALARIES");
     }
+
+    @Test
+    void websocketAcceptsBearerTokenFromSubprotocolHeader() throws Exception {
+        JwtService jwtService = new JwtService(
+            "test-only-key-that-is-at-least-32-bytes", "test-issuer", 60);
+        AppUserRepository userRepository = mock(AppUserRepository.class);
+        AppUser active = new AppUser();
+        active.setUsername("active-user");
+        active.setEnabled(true);
+        active.setRoles(Set.of(Role.USER));
+        when(userRepository.findByUsername("active-user")).thenReturn(Optional.of(active));
+        String token = jwtService.generateAccessToken("active-user", Map.of());
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, userRepository);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ws/chat");
+        request.addHeader("Sec-WebSocket-Protocol", "bearer, " + token);
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getName()).isEqualTo("active-user");
+    }
+
+    @Test
+    void restEndpointNeverAcceptsTokenFromWebsocketSubprotocolHeader() throws Exception {
+        JwtService jwtService = mock(JwtService.class);
+        AppUserRepository userRepository = mock(AppUserRepository.class);
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtService, userRepository);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/chat/rooms");
+        request.addHeader("Sec-WebSocket-Protocol", "bearer, token-value");
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verifyNoInteractions(jwtService);
+        verifyNoInteractions(userRepository);
+    }
 }

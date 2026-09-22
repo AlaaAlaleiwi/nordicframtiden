@@ -7,11 +7,18 @@ import org.springframework.web.socket.config.annotation.*;
 @EnableWebSocket
 public class ChatWebSocketConfig implements WebSocketConfigurer {
   private final ChatWebSocketHandler handler;
-  public ChatWebSocketConfig(ChatWebSocketHandler handler) { this.handler = handler; }
+  private final ChatWebSocketHandshakeHandler handshakeHandler;
+
+  public ChatWebSocketConfig(ChatWebSocketHandler handler,
+                             ChatWebSocketHandshakeHandler handshakeHandler) {
+    this.handler = handler;
+    this.handshakeHandler = handshakeHandler;
+  }
 
   @Override
   public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
     registry.addHandler(handler, "/ws/chat")
+        .setHandshakeHandler(handshakeHandler)
         .setAllowedOrigins(
             "http://localhost:5173", "http://localhost:3000",
             "https://nordicframtiden-frontend-34c6b049a0f5.herokuapp.com",

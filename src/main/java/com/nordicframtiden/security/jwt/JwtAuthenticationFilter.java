@@ -91,6 +91,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     if (header != null && header.startsWith("Bearer ")) {
       return header.substring(7);
     }
+    if ("/ws/chat".equals(request.getRequestURI())) {
+      String protocols = request.getHeader("Sec-WebSocket-Protocol");
+      if (protocols != null) {
+        String[] values = protocols.split(",");
+        for (int index = 0; index + 1 < values.length; index++) {
+          if ("bearer".equalsIgnoreCase(values[index].trim())) {
+            String token = values[index + 1].trim();
+            return token.isEmpty() ? null : token;
+          }
+        }
+      }
+    }
     return null;
   }
 }
