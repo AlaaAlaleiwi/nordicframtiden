@@ -1,10 +1,14 @@
 package com.nordicframtiden.chat;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnMissingBean(ChatPushSender.class)
+@ConditionalOnProperty(
+    name = "app.firebase.enabled",
+    havingValue = "false",
+    matchIfMissing = true
+)
 public class NoOpChatPushSender implements ChatPushSender {
   @Override
   public void send(String firebaseInstallationId) {
