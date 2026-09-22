@@ -2,6 +2,7 @@ app:
   jwt:
     secret: ${APP_JWT_SECRET}
     accessTokenMinutes: ${APP_JWT_EXPIRES_MIN:15}
+    refreshTokenDays: ${APP_JWT_REFRESH_DAYS:30}
     issuer: ${APP_JWT_ISSUER:nordicframtiden}
   mail:
     enabled: ${MAIL_ENABLED:false}

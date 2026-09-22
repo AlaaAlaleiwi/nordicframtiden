@@ -34,7 +34,9 @@ public class AuthController {
     record LoginRequest(String username, String password) {}
 
     // include perms so frontend can render menus immediately
-    record LoginResponse(String accessToken, List<String> roles, List<String> perms) {}
+    record LoginResponse(String accessToken, String refreshToken, List<String> roles, List<String> perms) {}
+
+    record RefreshRequest(String refreshToken) {}
 
     record MeResponse(String username, List<String> roles, List<String> perms) {}
 
@@ -60,8 +62,21 @@ public class AuthController {
         claims.put("perms", permNames);
 
         // Generate tokens using the correct JwtService signature
-        String accessToken = jwtService.generateAccessToken(user.getUsername(), claims);
-        return ResponseEntity.ok(new LoginResponse(accessToken, roleNames, permNames));
+        return ResponseEntity.ok(tokens(user, roleNames, permNames));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@RequestBody RefreshRequest request) {
+        try {
+            String username = jwtService.validateRefreshToken(request.refreshToken()).getSubject();
+            AppUser user = userRepo.findByUsername(username).filter(AppUser::isEnabled)
+                    .orElseThrow(() -> new IllegalArgumentException("Active user not found"));
+            List<String> roles = user.getRoles().stream().map(Role::name).toList();
+            List<String> perms = user.getPermissions().stream().map(Permission::name).toList();
+            return ResponseEntity.ok(tokens(user, roles, perms));
+        } catch (RuntimeException error) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
     }
 
     @PostMapping("/logout")
@@ -85,5 +100,17 @@ public class AuthController {
                 .map(Permission::name)
                 .toList();
         return ResponseEntity.ok(new MeResponse(username, roleNames, permNames));
+    }
+
+    private LoginResponse tokens(AppUser user, List<String> roles, List<String> perms) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("roles", roles);
+        claims.put("perms", perms);
+        return new LoginResponse(
+                jwtService.generateAccessToken(user.getUsername(), claims),
+                jwtService.generateRefreshToken(user.getUsername()),
+                roles,
+                perms
+        );
     }
 }
