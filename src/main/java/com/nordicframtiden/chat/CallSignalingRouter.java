@@ -39,11 +39,12 @@ class CallSignalingRouter {
     return switch (type) {
       case "call.invite" -> invite(username, callId, roomId, roomMembers, message);
       case "call.join" -> join(username, callId, roomId, message);
-      case "call.leave" -> leave(username, callId, roomId, message);
+      case "call.leave" -> leave(username, callId, roomId, roomMembers, message);
       case "call.offer", "call.answer", "call.ice" ->
           direct(username, callId, roomId, message);
-      case "call.mute", "call.decline" ->
+      case "call.mute" ->
           broadcastToParticipants(username, callId, roomId, message);
+      case "call.decline" -> decline(username, callId, roomId, message);
       default -> throw new IllegalArgumentException("Unsupported call event");
     };
   }
@@ -61,8 +62,15 @@ class CallSignalingRouter {
         callId, ignored -> new ActiveCall(roomId, new LinkedHashSet<>()));
     requireRoom(activeCall, roomId);
     activeCall.participants.add(username);
-    Set<String> recipients = new LinkedHashSet<>(roomMembers);
-    recipients.remove(username);
+    Set<String> recipients = new LinkedHashSet<>();
+    String target = message.path("targetUsername").asText("").trim();
+    if (!target.isEmpty()) {
+      if (!roomMembers.contains(target) || target.equals(username)) throw new ChatAccessDeniedException();
+      recipients.add(target);
+    } else {
+      recipients.addAll(roomMembers);
+      recipients.remove(username);
+    }
     return routeFor(username, recipients, message);
   }
 
@@ -78,12 +86,24 @@ class CallSignalingRouter {
     return routeFor(username, recipients, message);
   }
 
-  private Route leave(String username, UUID callId, long roomId, JsonNode message) {
+  private Route leave(String username, UUID callId, long roomId,
+                      List<String> roomMembers, JsonNode message) {
     ActiveCall activeCall = requiredCall(callId, roomId);
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     recipients.remove(username);
     activeCall.participants.remove(username);
-    if (activeCall.participants.isEmpty()) calls.remove(callId);
+    if (activeCall.participants.isEmpty()) {
+      recipients.addAll(roomMembers);
+      recipients.remove(username);
+      calls.remove(callId);
+    }
+    return routeFor(username, recipients, message);
+  }
+
+  private Route decline(String username, UUID callId, long roomId, JsonNode message) {
+    ActiveCall activeCall = requiredCall(callId, roomId);
+    Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
+    recipients.remove(username);
     return routeFor(username, recipients, message);
   }
 
