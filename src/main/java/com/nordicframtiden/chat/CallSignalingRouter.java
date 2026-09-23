@@ -18,10 +18,12 @@ class CallSignalingRouter {
 
   private final ChatRoomMemberRepository members;
   private final CallHistoryService history;
+  private final ObjectMapper objectMapper;
   private final Map<UUID, ActiveCall> calls = new ConcurrentHashMap<>();
 
   CallSignalingRouter(ObjectMapper objectMapper, ChatRoomMemberRepository members,
                       CallHistoryService history) {
+    this.objectMapper = objectMapper;
     this.members = members;
     this.history = history;
   }
@@ -53,11 +55,27 @@ class CallSignalingRouter {
     };
   }
 
-  synchronized void disconnected(String username) {
-    calls.entrySet().removeIf(entry -> {
-      entry.getValue().participants.remove(username);
-      return entry.getValue().participants.isEmpty();
-    });
+  synchronized List<Route> disconnected(String username) {
+    var routes = new java.util.ArrayList<Route>();
+    for (var entry : List.copyOf(calls.entrySet())) {
+      UUID callId = entry.getKey();
+      ActiveCall call = entry.getValue();
+      if (!call.participants.remove(username)) continue;
+
+      Set<String> recipients = new LinkedHashSet<>(call.participants);
+      ObjectNode event = objectMapper.createObjectNode();
+      event.put("type", "call.leave");
+      event.put("callId", callId.toString());
+      event.put("roomId", call.roomId);
+      event.put("fromUsername", username);
+      routes.add(new Route(recipients, event));
+
+      if (call.participants.size() <= 1) {
+        calls.remove(callId);
+        history.ended(callId, "MISSED");
+      }
+    }
+    return routes;
   }
 
   private Route invite(String username, UUID callId, long roomId,

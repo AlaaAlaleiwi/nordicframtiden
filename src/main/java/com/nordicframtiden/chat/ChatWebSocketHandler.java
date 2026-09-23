@@ -36,11 +36,16 @@ public class ChatWebSocketHandler extends TextWebSocketHandler implements ChatEv
   public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
     if (session.getPrincipal() == null) return;
     String username = session.getPrincipal().getName();
-    callRouter.disconnected(username);
     Set<WebSocketSession> userSessions = sessions.get(username);
     if (userSessions != null) {
       userSessions.remove(session);
-      if (userSessions.isEmpty()) { sessions.remove(username); broadcastPresence(username, false); }
+      if (userSessions.isEmpty()) {
+        sessions.remove(username);
+        for (var route : callRouter.disconnected(username)) {
+          sendTo(route.recipients(), route.event());
+        }
+        broadcastPresence(username, false);
+      }
     }
   }
 
