@@ -13,7 +13,8 @@ import static org.mockito.Mockito.when;
 class CallSignalingRouterTest {
   private final ObjectMapper mapper = new ObjectMapper();
   private final ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
-  private final CallSignalingRouter router = new CallSignalingRouter(mapper, members);
+  private final CallHistoryService history = mock(CallHistoryService.class);
+  private final CallSignalingRouter router = new CallSignalingRouter(mapper, members, history);
 
   @Test
   void routesInviteOnlyToOtherRoomMembers() throws Exception {

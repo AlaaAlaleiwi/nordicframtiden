@@ -17,10 +17,13 @@ class CallSignalingRouter {
   static final int MAX_PARTICIPANTS = 4;
 
   private final ChatRoomMemberRepository members;
+  private final CallHistoryService history;
   private final Map<UUID, ActiveCall> calls = new ConcurrentHashMap<>();
 
-  CallSignalingRouter(ObjectMapper objectMapper, ChatRoomMemberRepository members) {
+  CallSignalingRouter(ObjectMapper objectMapper, ChatRoomMemberRepository members,
+                      CallHistoryService history) {
     this.members = members;
+    this.history = history;
   }
 
   synchronized Route route(String username, JsonNode message) {
@@ -63,6 +66,7 @@ class CallSignalingRouter {
         callId, ignored -> new ActiveCall(roomId, new LinkedHashSet<>()));
     requireRoom(activeCall, roomId);
     activeCall.participants.add(username);
+    history.started(callId, roomId, username);
     Set<String> recipients = new LinkedHashSet<>();
     String target = message.path("targetUsername").asText("").trim();
     if (!target.isEmpty()) {
@@ -83,6 +87,7 @@ class CallSignalingRouter {
     }
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     activeCall.participants.add(username);
+    history.answered(callId);
     recipients.remove(username);
     return routeFor(username, recipients, message);
   }
@@ -100,10 +105,11 @@ class CallSignalingRouter {
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     recipients.remove(username);
     activeCall.participants.remove(username);
-    if (activeCall.participants.isEmpty()) {
+    if (activeCall.participants.size() <= 1) {
       recipients.addAll(roomMembers);
       recipients.remove(username);
       calls.remove(callId);
+      history.ended(callId, "MISSED");
     }
     return routeFor(username, recipients, message);
   }
@@ -112,6 +118,7 @@ class CallSignalingRouter {
     ActiveCall activeCall = requiredCall(callId, roomId);
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     recipients.remove(username);
+    history.ended(callId, "DECLINED");
     return routeFor(username, recipients, message);
   }
 
