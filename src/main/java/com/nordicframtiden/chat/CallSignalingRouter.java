@@ -53,6 +53,7 @@ class CallSignalingRouter {
       case "call.mute" ->
           broadcastToParticipants(username, callId, roomId, message);
       case "call.decline" -> decline(username, callId, roomId, roomMembers, message);
+      case "call.busy" -> busy(username, callId, roomId, message);
       default -> throw new IllegalArgumentException("Unsupported call event");
     };
   }
@@ -72,7 +73,7 @@ class CallSignalingRouter {
       event.put("fromUsername", username);
       routes.add(new Route(recipients, event));
 
-      if (call.participants.size() <= 1) {
+      if (call.participants.isEmpty() || (!call.isChannel && call.participants.size() <= 1)) {
         calls.remove(callId);
         history.ended(callId, "MISSED");
       }
@@ -83,7 +84,10 @@ class CallSignalingRouter {
   private Route invite(String username, UUID callId, long roomId,
                        List<String> roomMembers, JsonNode message) {
     ActiveCall activeCall = calls.computeIfAbsent(
-        callId, ignored -> new ActiveCall(roomId, new LinkedHashSet<>()));
+        callId, ignored -> new ActiveCall(
+            roomId,
+            message.path("isChannel").asBoolean(false),
+            new LinkedHashSet<>()));
     requireRoom(activeCall, roomId);
     activeCall.participants.add(username);
     history.started(callId, roomId, username);
@@ -126,7 +130,8 @@ class CallSignalingRouter {
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     recipients.remove(username);
     activeCall.participants.remove(username);
-    if (activeCall.participants.size() <= 1) {
+    if (activeCall.participants.isEmpty()
+        || (!activeCall.isChannel && activeCall.participants.size() <= 1)) {
       recipients.addAll(roomMembers);
       recipients.remove(username);
       calls.remove(callId);
@@ -142,6 +147,13 @@ class CallSignalingRouter {
     recipients.remove(username);
     calls.remove(callId);
     history.ended(callId, "DECLINED");
+    return routeFor(username, recipients, message);
+  }
+
+  private Route busy(String username, UUID callId, long roomId, JsonNode message) {
+    ActiveCall activeCall = requiredCall(callId, roomId);
+    Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
+    recipients.remove(username);
     return routeFor(username, recipients, message);
   }
 
@@ -190,5 +202,5 @@ class CallSignalingRouter {
   }
 
   record Route(Set<String> recipients, ObjectNode event) {}
-  private record ActiveCall(long roomId, Set<String> participants) {}
+  private record ActiveCall(long roomId, boolean isChannel, Set<String> participants) {}
 }
