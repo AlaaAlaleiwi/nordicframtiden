@@ -3,6 +3,7 @@ package com.nordicframtiden.chat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.nordicframtiden.security.repo.AppUserRepository;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashSet;
@@ -20,14 +21,17 @@ class CallSignalingRouter {
   private final CallHistoryService history;
   private final ObjectMapper objectMapper;
   private final ChatPushNotificationService pushNotifications;
+  private final AppUserRepository users;
   private final Map<UUID, ActiveCall> calls = new ConcurrentHashMap<>();
 
   CallSignalingRouter(ObjectMapper objectMapper, ChatRoomMemberRepository members,
-                      CallHistoryService history, ChatPushNotificationService pushNotifications) {
+                      CallHistoryService history, ChatPushNotificationService pushNotifications,
+                      AppUserRepository users) {
     this.objectMapper = objectMapper;
     this.members = members;
     this.history = history;
     this.pushNotifications = pushNotifications;
+    this.users = users;
   }
 
   synchronized Route route(String username, JsonNode message) {
@@ -41,7 +45,10 @@ class CallSignalingRouter {
     if (roomId <= 0) throw new IllegalArgumentException("A valid roomId is required");
 
     List<String> roomMembers = members.findUsernamesByRoomId(roomId);
-    if (!roomMembers.contains(username)) throw new ChatAccessDeniedException();
+    ActiveCall existingCall = calls.get(callId);
+    boolean callInvitee = existingCall != null
+        && (existingCall.invited.contains(username) || existingCall.participants.contains(username));
+    if (!roomMembers.contains(username) && !callInvitee) throw new ChatAccessDeniedException();
 
     return switch (type) {
       case "call.invite" -> invite(username, callId, roomId, roomMembers, message);
@@ -87,6 +94,7 @@ class CallSignalingRouter {
         callId, ignored -> new ActiveCall(
             roomId,
             message.path("isChannel").asBoolean(false),
+            new LinkedHashSet<>(),
             new LinkedHashSet<>()));
     requireRoom(activeCall, roomId);
     activeCall.participants.add(username);
@@ -94,12 +102,16 @@ class CallSignalingRouter {
     Set<String> recipients = new LinkedHashSet<>();
     String target = message.path("targetUsername").asText("").trim();
     if (!target.isEmpty()) {
-      if (!roomMembers.contains(target) || target.equals(username)) throw new ChatAccessDeniedException();
+      if (target.equals(username)
+          || users.findByUsername(target).filter(user -> user.isEnabled()).isEmpty()) {
+        throw new ChatAccessDeniedException();
+      }
       recipients.add(target);
     } else {
       recipients.addAll(roomMembers);
       recipients.remove(username);
     }
+    activeCall.invited.addAll(recipients);
     pushNotifications.notifyIncomingCall(recipients, username, callId.toString(), roomId);
     return routeFor(username, recipients, message);
   }
@@ -112,6 +124,7 @@ class CallSignalingRouter {
     }
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     activeCall.participants.add(username);
+    activeCall.invited.remove(username);
     history.answered(callId);
     recipients.remove(username);
     return routeFor(username, recipients, message);
@@ -202,5 +215,6 @@ class CallSignalingRouter {
   }
 
   record Route(Set<String> recipients, ObjectNode event) {}
-  private record ActiveCall(long roomId, boolean isChannel, Set<String> participants) {}
+  private record ActiveCall(long roomId, boolean isChannel, Set<String> participants,
+                            Set<String> invited) {}
 }

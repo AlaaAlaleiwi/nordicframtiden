@@ -1,6 +1,7 @@
 package com.nordicframtiden.chat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nordicframtiden.security.repo.AppUserRepository;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -15,7 +16,8 @@ class CallSignalingRouterTest {
   private final ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
   private final CallHistoryService history = mock(CallHistoryService.class);
   private final ChatPushNotificationService pushNotifications = mock(ChatPushNotificationService.class);
-  private final CallSignalingRouter router = new CallSignalingRouter(mapper, members, history, pushNotifications);
+  private final AppUserRepository users = mock(AppUserRepository.class);
+  private final CallSignalingRouter router = new CallSignalingRouter(mapper, members, history, pushNotifications, users);
 
   @Test
   void routesInviteOnlyToOtherRoomMembers() throws Exception {
