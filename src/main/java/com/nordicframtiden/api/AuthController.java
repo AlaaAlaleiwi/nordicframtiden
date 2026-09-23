@@ -5,6 +5,8 @@ import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.model.Permission;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.repo.UserProfileRepository;
+import com.nordicframtiden.admin.model.AdminProfileRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -21,13 +23,19 @@ public class AuthController {
     private final AuthenticationManager authManager;
     private final JwtService jwtService;
     private final AppUserRepository userRepo;
+    private final UserProfileRepository userProfiles;
+    private final AdminProfileRepository adminProfiles;
 
     public AuthController(AuthenticationManager authManager,
                           JwtService jwtService,
-                          AppUserRepository userRepo) {
+                          AppUserRepository userRepo,
+                          UserProfileRepository userProfiles,
+                          AdminProfileRepository adminProfiles) {
         this.authManager = authManager;
         this.jwtService = jwtService;
         this.userRepo = userRepo;
+        this.userProfiles = userProfiles;
+        this.adminProfiles = adminProfiles;
     }
 
     // ---------- DTOs ----------
@@ -38,7 +46,7 @@ public class AuthController {
 
     record RefreshRequest(String refreshToken) {}
 
-    record MeResponse(String username, List<String> roles, List<String> perms) {}
+    record MeResponse(String username, String fullName, List<String> roles, List<String> perms) {}
 
     // ---------- Endpoints ----------
     @PostMapping("/login")
@@ -99,7 +107,11 @@ public class AuthController {
         List<String> permNames = user.getPermissions().stream()
                 .map(Permission::name)
                 .toList();
-        return ResponseEntity.ok(new MeResponse(username, roleNames, permNames));
+        String fullName = userProfiles.findByUserId(user.getId()).map(profile -> profile.getFullName())
+                .or(() -> adminProfiles.findByUserId(user.getId()).map(profile -> profile.getFullName()))
+                .filter(name -> !name.isBlank())
+                .orElse(username);
+        return ResponseEntity.ok(new MeResponse(username, fullName, roleNames, permNames));
     }
 
     private LoginResponse tokens(AppUser user, List<String> roles, List<String> perms) {

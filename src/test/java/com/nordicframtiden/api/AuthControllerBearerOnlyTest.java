@@ -5,6 +5,8 @@ import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.model.Permission;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.repo.UserProfileRepository;
+import com.nordicframtiden.admin.model.AdminProfileRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -33,6 +35,8 @@ class AuthControllerBearerOnlyTest {
     @MockitoBean AuthenticationManager authenticationManager;
     @MockitoBean JwtService jwtService;
     @MockitoBean AppUserRepository userRepo;
+    @MockitoBean UserProfileRepository userProfiles;
+    @MockitoBean AdminProfileRepository adminProfiles;
 
     @Test
     void loginReturnsBearerTokenWithoutSettingAuthenticationCookies() throws Exception {
