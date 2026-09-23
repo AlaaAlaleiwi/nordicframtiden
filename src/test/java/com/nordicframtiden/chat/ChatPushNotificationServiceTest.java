@@ -2,6 +2,7 @@ package com.nordicframtiden.chat;
 
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.repo.UserProfileRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
@@ -26,7 +27,8 @@ class ChatPushNotificationServiceTest {
     when(subscriptions.findByFirebaseInstallationId("fid-123"))
         .thenReturn(Optional.empty());
     when(subscriptions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-    ChatPushNotificationService service = new ChatPushNotificationService(subscriptions, users, sender);
+    ChatPushNotificationService service = new ChatPushNotificationService(
+        subscriptions, users, sender, mock(UserProfileRepository.class));
 
     ChatPushSubscription saved = service.register(authentication("anna"), "fid-123");
 
@@ -39,7 +41,8 @@ class ChatPushNotificationServiceTest {
     ChatPushSubscriptionRepository subscriptions = mock(ChatPushSubscriptionRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatPushSender sender = mock(ChatPushSender.class);
-    ChatPushNotificationService service = new ChatPushNotificationService(subscriptions, users, sender);
+    ChatPushNotificationService service = new ChatPushNotificationService(
+        subscriptions, users, sender, mock(UserProfileRepository.class));
     ChatRoom room = new ChatRoom();
     room.setId(12L);
     ChatMessage message = new ChatMessage();

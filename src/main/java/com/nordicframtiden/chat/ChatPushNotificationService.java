@@ -2,6 +2,7 @@ package com.nordicframtiden.chat;
 
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.repo.UserProfileRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,12 +16,15 @@ public class ChatPushNotificationService {
   private final ChatPushSubscriptionRepository subscriptions;
   private final AppUserRepository users;
   private final ChatPushSender sender;
+  private final UserProfileRepository profiles;
 
   public ChatPushNotificationService(ChatPushSubscriptionRepository subscriptions,
-                                     AppUserRepository users, ChatPushSender sender) {
+                                     AppUserRepository users, ChatPushSender sender,
+                                     UserProfileRepository profiles) {
     this.subscriptions = subscriptions;
     this.users = users;
     this.sender = sender;
+    this.profiles = profiles;
   }
 
   @Transactional
@@ -50,9 +54,14 @@ public class ChatPushNotificationService {
   @Transactional(readOnly = true)
   public void notifyIncomingCall(Set<String> usernames, String caller, String callId, long roomId) {
     if (usernames.isEmpty()) return;
+    String callerName = users.findByUsername(caller)
+        .flatMap(user -> profiles.findByUserId(user.getId()))
+        .map(profile -> profile.getFullName())
+        .filter(name -> !name.isBlank())
+        .orElse(caller);
     var data = Map.of(
         "title", "Incoming audio call",
-        "body", caller + " is calling",
+        "body", callerName + " is calling",
         "url", "/chat",
         "type", "call.invite",
         "callId", callId,
