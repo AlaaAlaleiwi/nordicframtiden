@@ -54,6 +54,23 @@ gcloud run deploy nordicframtiden-api \
 If mail is not configured, omit `MAIL_PASSWORD=mail-password:latest` and supply the non-secret mail settings only when needed. For a private Redis or PostgreSQL endpoint, add the appropriate `--network`, `--subnet`, and `--vpc-egress` options to the deployment.
 
 After Cloud Run reports a successful revision, deploy Firebase Hosting from the frontend repository. The Hosting deployment checks that this service already exists.
+
+## Audio-call relay
+
+WebRTC requires a publicly reachable TURN service when a direct connection is blocked by
+NAT or a firewall. Cloud Run cannot expose the UDP port range required by coturn, so run
+the included coturn service on a VM with a public IP, or use a managed TURN provider.
+
+Configure the backend with the shared TURN values. The authenticated ICE endpoint returns
+them to both the iOS and web clients:
+
+```text
+CALL_TURN_URLS=turn:TURN_HOST:3478,turn:TURN_HOST:3478?transport=tcp
+CALL_TURN_USERNAME=<turn-username>
+CALL_TURN_CREDENTIAL=<turn-password>
+```
+
+Store `CALL_TURN_CREDENTIAL` in Secret Manager in production.
 # Firebase chat notifications
 
 Chat push notifications are optional and disabled by default. The frontend reads the

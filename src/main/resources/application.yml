@@ -19,6 +19,12 @@ app:
     app-id: ${APP_FIREBASE_APP_ID:}
     vapid-public-key: ${APP_FIREBASE_VAPID_PUBLIC_KEY:}
 
+calls:
+  ice:
+    turn-urls: ${CALL_TURN_URLS:}
+    turn-username: ${CALL_TURN_USERNAME:}
+    turn-credential: ${CALL_TURN_CREDENTIAL:}
+
 server:
   # Cloud Run injects PORT. Keep 8080 as the local/default container port.
   port: ${PORT:8080}
