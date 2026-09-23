@@ -51,4 +51,18 @@ class CallSignalingRouterTest {
 
     assertThat(route.recipients()).containsExactly("bob");
   }
+
+  @Test
+  void routesRingingAcknowledgementBackToCaller() throws Exception {
+    when(members.findUsernamesByRoomId(10L)).thenReturn(List.of("alice", "bob"));
+    String callId = "be5194fd-af5d-46c9-b246-5c968f40b946";
+    router.route("alice", mapper.readTree(
+        "{\"type\":\"call.invite\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+
+    var route = router.route("bob", mapper.readTree(
+        "{\"type\":\"call.ringing\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+
+    assertThat(route.recipients()).containsExactly("alice");
+    assertThat(route.event().path("fromUsername").asText()).isEqualTo("bob");
+  }
 }

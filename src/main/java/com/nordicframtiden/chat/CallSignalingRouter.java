@@ -38,6 +38,7 @@ class CallSignalingRouter {
 
     return switch (type) {
       case "call.invite" -> invite(username, callId, roomId, roomMembers, message);
+      case "call.ringing" -> ringing(username, callId, roomId, message);
       case "call.join" -> join(username, callId, roomId, message);
       case "call.leave" -> leave(username, callId, roomId, roomMembers, message);
       case "call.offer", "call.answer", "call.ice" ->
@@ -82,6 +83,13 @@ class CallSignalingRouter {
     }
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     activeCall.participants.add(username);
+    recipients.remove(username);
+    return routeFor(username, recipients, message);
+  }
+
+  private Route ringing(String username, UUID callId, long roomId, JsonNode message) {
+    ActiveCall activeCall = requiredCall(callId, roomId);
+    Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     recipients.remove(username);
     return routeFor(username, recipients, message);
   }
