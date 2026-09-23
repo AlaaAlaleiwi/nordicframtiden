@@ -33,7 +33,8 @@ public class ChatController {
 
   public record ParticipantDto(Long id, String username, String displayName, boolean online) {}
   public record RoomDto(Long id, String type, String name, String description, boolean privateChannel,
-                        boolean member, boolean canManage, long unreadCount, List<ParticipantDto> participants) {}
+                        boolean member, boolean canManage, long unreadCount, List<ParticipantDto> participants,
+                        List<Long> adminUserIds) {}
   public record ReactionDto(String emoji, long count, boolean mine) {}
   public record MessageDto(Long id, Long roomId, Long parentId, ParticipantDto sender, String body,
                            Instant createdAt, Instant editedAt, boolean deleted, long replyCount,
@@ -41,6 +42,7 @@ public class ChatController {
   public record CreateChannelRequest(@NotBlank @Size(max=80) String name, @Size(max=500) String description,
                                      boolean privateChannel, List<Long> memberIds) {}
   public record AddChannelMembersRequest(@NotEmpty List<@NotNull Long> userIds) {}
+  public record AddChannelAdminsRequest(@NotEmpty List<@NotNull Long> userIds) {}
   public record DirectRequest(@NotNull Long userId) {}
   public record SendMessageRequest(Long parentId, @NotBlank @Size(max=4000) String body) {}
   public record EditMessageRequest(@NotBlank @Size(max=4000) String body) {}
@@ -77,6 +79,12 @@ public class ChatController {
   public RoomDto addChannelMembers(Authentication auth, @PathVariable Long roomId,
                                    @Valid @RequestBody AddChannelMembersRequest request) {
     return room(service.addChannelMembers(auth, roomId, request.userIds()), service.current(auth));
+  }
+
+  @PostMapping("/channels/{roomId}/admins")
+  public RoomDto addChannelAdmins(Authentication auth, @PathVariable Long roomId,
+                                  @Valid @RequestBody AddChannelAdminsRequest request) {
+    return room(service.addChannelAdmins(auth, roomId, request.userIds()), service.current(auth));
   }
 
   @GetMapping("/rooms/{roomId}/messages")
@@ -121,11 +129,13 @@ public class ChatController {
       displayName = roomParticipants.stream().filter(person -> !person.id().equals(me.getId()))
           .map(ParticipantDto::displayName).findFirst().orElse("Direct message");
     }
-    boolean canManage = room.getType() == ChatRoom.Type.CHANNEL
-        && room.getCreatedBy().getId().equals(me.getId());
+    List<ChatRoomMember> memberships = members.findByRoomId(room.getId());
+    List<Long> adminUserIds = memberships.stream().filter(ChatRoomMember::isChannelAdmin)
+        .map(member -> member.getUser().getId()).toList();
+    boolean canManage = room.getType() == ChatRoom.Type.CHANNEL && adminUserIds.contains(me.getId());
     return new RoomDto(room.getId(), room.getType().name(), displayName, room.getDescription(),
         room.isPrivateChannel(), isMember, canManage,
-        isMember ? service.unreadCount(room.getId(), me.getId()) : 0, roomParticipants);
+        isMember ? service.unreadCount(room.getId(), me.getId()) : 0, roomParticipants, adminUserIds);
   }
 
   private MessageDto message(ChatMessage message, AppUser me) {

@@ -17,6 +17,7 @@ public class ChatRoomMember {
   @Column(name = "joined_at", nullable = false, updatable = false)
   private Instant joinedAt = Instant.now();
   @Column(name = "last_read_message_id") private Long lastReadMessageId;
+  @Column(name = "channel_admin", nullable = false) private boolean channelAdmin;
 
   public ChatRoom getRoom() { return room; }
   public void setRoom(ChatRoom room) { this.room = room; }
@@ -24,6 +25,8 @@ public class ChatRoomMember {
   public void setUser(AppUser user) { this.user = user; }
   public Long getLastReadMessageId() { return lastReadMessageId; }
   public void setLastReadMessageId(Long value) { lastReadMessageId = value; }
+  public boolean isChannelAdmin() { return channelAdmin; }
+  public void setChannelAdmin(boolean channelAdmin) { this.channelAdmin = channelAdmin; }
 
   public static class Id implements Serializable {
     private Long room;

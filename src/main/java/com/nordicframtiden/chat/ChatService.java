@@ -54,7 +54,7 @@ public class ChatService {
 
     LinkedHashSet<Long> ids = new LinkedHashSet<>(memberIds == null ? List.of() : memberIds);
     ids.add(creator.getId());
-    for (Long id : ids) addMember(room, users.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found")));
+    for (Long id : ids) addMember(room, users.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found")), id.equals(creator.getId()));
     return room;
   }
 
@@ -70,8 +70,8 @@ public class ChatService {
       room.setPrivateChannel(true);
       room.setCreatedBy(me);
       room = rooms.save(room);
-      addMember(room, me);
-      addMember(room, other);
+      addMember(room, me, false);
+      addMember(room, other, false);
       return room;
     });
   }
@@ -81,22 +81,38 @@ public class ChatService {
     AppUser user = current(auth);
     ChatRoom room = room(roomId);
     if (room.getType() != ChatRoom.Type.CHANNEL || room.isPrivateChannel()) throw new ChatAccessDeniedException();
-    if (!members.existsByRoomIdAndUserId(roomId, user.getId())) addMember(room, user);
+    if (!members.existsByRoomIdAndUserId(roomId, user.getId())) addMember(room, user, false);
   }
 
   @Transactional
   public ChatRoom addChannelMembers(Authentication auth, Long roomId, List<Long> userIds) {
     AppUser user = current(auth);
     ChatRoom room = room(roomId);
-    if (room.getType() != ChatRoom.Type.CHANNEL
-        || !room.getCreatedBy().getId().equals(user.getId())) {
+    if (room.getType() != ChatRoom.Type.CHANNEL || !isChannelAdmin(roomId, user.getId())) {
       throw new ChatAccessDeniedException();
     }
     for (Long userId : new LinkedHashSet<>(userIds == null ? List.of() : userIds)) {
       if (members.existsByRoomIdAndUserId(roomId, userId)) continue;
       AppUser member = users.findById(userId).filter(AppUser::isEnabled)
           .orElseThrow(() -> new IllegalArgumentException("User not found"));
-      addMember(room, member);
+      addMember(room, member, false);
+    }
+    events.publish(roomId, "channel.members.updated", roomId);
+    return room;
+  }
+
+  @Transactional
+  public ChatRoom addChannelAdmins(Authentication auth, Long roomId, List<Long> userIds) {
+    AppUser user = current(auth);
+    ChatRoom room = room(roomId);
+    if (room.getType() != ChatRoom.Type.CHANNEL || !isChannelAdmin(roomId, user.getId())) {
+      throw new ChatAccessDeniedException();
+    }
+    for (Long userId : new LinkedHashSet<>(userIds == null ? List.of() : userIds)) {
+      ChatRoomMember member = members.findByRoomIdAndUserId(roomId, userId)
+          .orElseThrow(() -> new IllegalArgumentException("Channel admin must already be a member"));
+      member.setChannelAdmin(true);
+      members.save(member);
     }
     events.publish(roomId, "channel.members.updated", roomId);
     return room;
@@ -196,8 +212,12 @@ public class ChatService {
         .orElseThrow(() -> new ChatAccessDeniedException());
   }
 
-  private void addMember(ChatRoom room, AppUser user) {
-    ChatRoomMember member = new ChatRoomMember(); member.setRoom(room); member.setUser(user); members.save(member);
+  private void addMember(ChatRoom room, AppUser user, boolean channelAdmin) {
+    ChatRoomMember member = new ChatRoomMember(); member.setRoom(room); member.setUser(user);
+    member.setChannelAdmin(channelAdmin); members.save(member);
+  }
+  private boolean isChannelAdmin(Long roomId, Long userId) {
+    return members.findByRoomIdAndUserId(roomId, userId).map(ChatRoomMember::isChannelAdmin).orElse(false);
   }
   private void requireMember(Long roomId, Long userId) {
     if (!members.existsByRoomIdAndUserId(roomId, userId)) throw new ChatAccessDeniedException();

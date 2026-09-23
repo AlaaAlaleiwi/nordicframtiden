@@ -9,9 +9,8 @@ import java.util.Optional;
 public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
   @Query("""
       select distinct r from ChatRoom r
-      left join ChatRoomMember m on m.room = r and m.user.id = :userId
-      where (r.type = com.nordicframtiden.chat.ChatRoom.Type.CHANNEL and r.privateChannel = false)
-         or m.user.id = :userId
+      join ChatRoomMember m on m.room = r
+      where m.user.id = :userId
       order by r.createdAt desc
       """)
   List<ChatRoom> findVisibleTo(@Param("userId") Long userId);
