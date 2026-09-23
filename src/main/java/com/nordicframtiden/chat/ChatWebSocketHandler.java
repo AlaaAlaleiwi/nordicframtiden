@@ -80,6 +80,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler implements ChatEv
   }
 
   @Override
+  public void publishTo(Set<String> usernames, Long roomId, String type, Object payload) {
+    sendTo(usernames, Map.of("type", type, "roomId", roomId, "payload", payload));
+  }
+
+  @Override
   public boolean isOnline(String username) {
     return sessions.containsKey(username);
   }

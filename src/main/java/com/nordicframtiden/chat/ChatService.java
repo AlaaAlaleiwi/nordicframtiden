@@ -144,9 +144,13 @@ public class ChatService {
       throw new ChatAccessDeniedException();
     }
     var formerMembers = new LinkedHashSet<>(members.findUsernamesByRoomId(roomId));
-    events.publish(roomId, "channel.deleted", room.getName());
-    notifications.notifyChannelDeleted(formerMembers, room.getName());
+    String channelName = room.getName();
     rooms.delete(room);
+    // Force all cascading deletes now. No notification is sent if the
+    // database rejects the deletion and the transaction rolls back.
+    rooms.flush();
+    events.publishTo(formerMembers, roomId, "channel.deleted", channelName);
+    notifications.notifyChannelDeleted(formerMembers, channelName);
   }
 
   @Transactional(readOnly = true)
