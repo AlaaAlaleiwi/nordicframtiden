@@ -22,6 +22,17 @@ class CallSignalController {
 
   record TerminalSignalRequest(@NotNull Long roomId, String message) {}
 
+  @PostMapping("/{callId}/join")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  void join(Authentication authentication, @PathVariable UUID callId,
+            @Valid @RequestBody TerminalSignalRequest request) {
+    var signal = objectMapper.createObjectNode();
+    signal.put("type", "call.join");
+    signal.put("callId", callId.toString());
+    signal.put("roomId", request.roomId());
+    sockets.routeCallSignal(authentication.getName(), signal);
+  }
+
   @PostMapping("/{callId}/decline")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   void decline(Authentication authentication, @PathVariable UUID callId,
