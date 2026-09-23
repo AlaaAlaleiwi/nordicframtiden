@@ -24,4 +24,6 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
       limit 1
       """, nativeQuery = true)
   Optional<ChatRoom> findDirectBetween(@Param("firstId") Long firstId, @Param("secondId") Long secondId);
+
+  void deleteByCreatedBy(com.nordicframtiden.security.model.AppUser createdBy);
 }

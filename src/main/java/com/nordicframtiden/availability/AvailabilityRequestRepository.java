@@ -25,4 +25,6 @@ public interface AvailabilityRequestRepository extends JpaRepository<Availabilit
       @Param("startDate") LocalDate startDate,
       @Param("endDate") LocalDate endDate
   );
+
+  void deleteByUser(com.nordicframtiden.security.model.AppUser user);
 }

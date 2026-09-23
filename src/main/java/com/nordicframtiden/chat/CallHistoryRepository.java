@@ -7,7 +7,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.UUID;
 
-interface CallHistoryRepository extends JpaRepository<CallHistory, UUID> {
+public interface CallHistoryRepository extends JpaRepository<CallHistory, UUID> {
   @Query("""
       select history from CallHistory history
       where exists (
@@ -17,4 +17,6 @@ interface CallHistoryRepository extends JpaRepository<CallHistory, UUID> {
       order by history.startedAt desc
       """)
   List<CallHistory> findForUser(@Param("username") String username, Pageable pageable);
+
+  void deleteByCaller(com.nordicframtiden.security.model.AppUser caller);
 }

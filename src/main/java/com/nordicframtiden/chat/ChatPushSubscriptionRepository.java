@@ -20,4 +20,6 @@ public interface ChatPushSubscriptionRepository extends JpaRepository<ChatPushSu
       """)
   List<ChatPushSubscription> findForRoomExceptSender(@Param("roomId") Long roomId,
                                                      @Param("senderId") Long senderId);
+
+  void deleteByUser(com.nordicframtiden.security.model.AppUser user);
 }

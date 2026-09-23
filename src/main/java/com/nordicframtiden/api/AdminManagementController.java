@@ -141,4 +141,10 @@ public class AdminManagementController {
         var updated = adminService.resetAdminPassword(id);
         return new ResetPasswordResponse(updated.id(), updated.username(), updated.password());
     }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) {
+        adminService.deleteAdmin(id);
+    }
 }

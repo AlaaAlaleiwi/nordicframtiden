@@ -14,4 +14,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
   long countUnread(@Param("roomId") Long roomId, @Param("afterId") Long afterId, @Param("userId") Long userId);
 
   long countByParentId(Long parentId);
+
+  void deleteBySender(com.nordicframtiden.security.model.AppUser sender);
 }

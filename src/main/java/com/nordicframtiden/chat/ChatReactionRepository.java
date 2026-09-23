@@ -7,4 +7,6 @@ import java.util.Optional;
 public interface ChatReactionRepository extends JpaRepository<ChatReaction, ChatReaction.Id> {
   List<ChatReaction> findByMessageId(Long messageId);
   Optional<ChatReaction> findByMessageIdAndUserIdAndEmoji(Long messageId, Long userId, String emoji);
+
+  void deleteByUser(com.nordicframtiden.security.model.AppUser user);
 }

@@ -21,4 +21,6 @@ public interface StaffShiftRepository extends JpaRepository<StaffShift, Long> {
       @Param("end") OffsetDateTime end,
       @Param("userId") Long userId
   );
+
+  void deleteByUser(com.nordicframtiden.security.model.AppUser user);
 }

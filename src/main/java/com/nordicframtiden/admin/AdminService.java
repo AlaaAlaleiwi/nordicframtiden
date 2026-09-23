@@ -2,6 +2,14 @@ package com.nordicframtiden.admin;
 
 import com.nordicframtiden.admin.model.AdminProfile;
 import com.nordicframtiden.admin.model.AdminProfileRepository;
+import com.nordicframtiden.chat.CallHistoryRepository;
+import com.nordicframtiden.chat.ChatMessageRepository;
+import com.nordicframtiden.chat.ChatPushSubscriptionRepository;
+import com.nordicframtiden.chat.ChatReactionRepository;
+import com.nordicframtiden.chat.ChatRoomMemberRepository;
+import com.nordicframtiden.chat.ChatRoomRepository;
+import com.nordicframtiden.company.StaffShiftRepository;
+import com.nordicframtiden.availability.AvailabilityRequestRepository;
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
@@ -25,14 +33,38 @@ public class AdminService {
     private final PasswordEncoder encoder;
     private final EmailService emailService;
 
+    // Repositories holding references to app_user that lack ON DELETE CASCADE.
+    // They must be cleaned before the user row can be removed.
+    private final ChatMessageRepository chatMessageRepo;
+    private final ChatReactionRepository chatReactionRepo;
+    private final ChatRoomRepository chatRoomRepo;
+    private final CallHistoryRepository callHistoryRepo;
+    private final ChatPushSubscriptionRepository chatPushSubscriptionRepo;
+    private final StaffShiftRepository staffShiftRepo;
+    private final AvailabilityRequestRepository availabilityRequestRepo;
+
     public AdminService(AppUserRepository repo,
                        AdminProfileRepository adminProfileRepo,
                        PasswordEncoder encoder,
-                       EmailService emailService) {
+                       EmailService emailService,
+                       ChatMessageRepository chatMessageRepo,
+                       ChatReactionRepository chatReactionRepo,
+                       ChatRoomRepository chatRoomRepo,
+                       CallHistoryRepository callHistoryRepo,
+                       ChatPushSubscriptionRepository chatPushSubscriptionRepo,
+                       StaffShiftRepository staffShiftRepo,
+                       AvailabilityRequestRepository availabilityRequestRepo) {
         this.repo = repo;
         this.adminProfileRepo = adminProfileRepo;
         this.encoder = encoder;
         this.emailService = emailService;
+        this.chatMessageRepo = chatMessageRepo;
+        this.chatReactionRepo = chatReactionRepo;
+        this.chatRoomRepo = chatRoomRepo;
+        this.callHistoryRepo = callHistoryRepo;
+        this.chatPushSubscriptionRepo = chatPushSubscriptionRepo;
+        this.staffShiftRepo = staffShiftRepo;
+        this.availabilityRequestRepo = availabilityRequestRepo;
     }
 
     public record AdminRow(
@@ -177,5 +209,32 @@ public class AdminService {
                 profile != null ? profile.getEmail() : null,
                 profile != null ? profile.getPhone() : null,
                 rawPassword);
+    }
+
+    /* =========================
+       DELETE
+       ========================= */
+    @Transactional
+    public void deleteAdmin(Long id) {
+        AppUser user = repo.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (user.getRoles() == null || !user.getRoles().contains(Role.ADMIN)) {
+            throw new IllegalArgumentException("User is not an admin");
+        }
+
+        // Delete rooms created by this admin; messages inside cascade with the room.
+        chatRoomRepo.deleteByCreatedBy(user);
+        // Messages sent by this admin in other rooms (e.g. channels).
+        chatMessageRepo.deleteBySender(user);
+        // Reactions by this user and call history they started.
+        chatReactionRepo.deleteByUser(user);
+        callHistoryRepo.deleteByCaller(user);
+        chatPushSubscriptionRepo.deleteByUser(user);
+        staffShiftRepo.deleteByUser(user);
+        availabilityRequestRepo.deleteByUser(user);
+
+        adminProfileRepo.findByUserId(id).ifPresent(adminProfileRepo::delete);
+        repo.delete(user);
     }
 }
