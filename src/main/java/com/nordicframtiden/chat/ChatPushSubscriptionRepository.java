@@ -5,11 +5,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 
 public interface ChatPushSubscriptionRepository extends JpaRepository<ChatPushSubscription, Long> {
   Optional<ChatPushSubscription> findByFirebaseInstallationId(String firebaseInstallationId);
   void deleteByFirebaseInstallationIdAndUserId(String firebaseInstallationId, Long userId);
+  List<ChatPushSubscription> findByUserUsernameIn(Collection<String> usernames);
 
   @Query("""
       select subscription from ChatPushSubscription subscription

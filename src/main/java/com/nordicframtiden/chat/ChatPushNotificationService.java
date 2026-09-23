@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 public class ChatPushNotificationService {
@@ -43,6 +45,20 @@ public class ChatPushNotificationService {
   public void notifyNewMessage(ChatMessage message) {
     subscriptions.findForRoomExceptSender(message.getRoom().getId(), message.getSender().getId())
         .forEach(subscription -> sender.send(subscription.getFirebaseInstallationId()));
+  }
+
+  @Transactional(readOnly = true)
+  public void notifyIncomingCall(Set<String> usernames, String caller, String callId, long roomId) {
+    if (usernames.isEmpty()) return;
+    var data = Map.of(
+        "title", "Incoming audio call",
+        "body", caller + " is calling",
+        "url", "/chat",
+        "type", "call.invite",
+        "callId", callId,
+        "roomId", Long.toString(roomId));
+    subscriptions.findByUserUsernameIn(usernames)
+        .forEach(subscription -> sender.send(subscription.getFirebaseInstallationId(), data));
   }
 
   private AppUser current(Authentication authentication) {

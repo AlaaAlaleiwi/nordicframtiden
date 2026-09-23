@@ -14,6 +14,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.Map;
 
 @Component
 @ConditionalOnProperty(name = "app.firebase.enabled", havingValue = "true")
@@ -32,13 +33,11 @@ public class FirebaseChatPushSender implements ChatPushSender {
   }
 
   @Override
-  public void send(String firebaseInstallationId) {
+  public void send(String firebaseInstallationId, Map<String, String> data) {
     try {
       Message message = Message.builder()
           .setFid(firebaseInstallationId)
-          .putData("title", "Nordic Framtiden Health")
-          .putData("body", "You have a new message")
-          .putData("url", "/chat")
+          .putAllData(data)
           .build();
       ApiFutures.addCallback(messaging.sendAsync(message), new ApiFutureCallback<>() {
         @Override public void onSuccess(String result) {

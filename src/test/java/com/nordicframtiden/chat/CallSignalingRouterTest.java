@@ -14,7 +14,8 @@ class CallSignalingRouterTest {
   private final ObjectMapper mapper = new ObjectMapper();
   private final ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
   private final CallHistoryService history = mock(CallHistoryService.class);
-  private final CallSignalingRouter router = new CallSignalingRouter(mapper, members, history);
+  private final ChatPushNotificationService pushNotifications = mock(ChatPushNotificationService.class);
+  private final CallSignalingRouter router = new CallSignalingRouter(mapper, members, history, pushNotifications);
 
   @Test
   void routesInviteOnlyToOtherRoomMembers() throws Exception {

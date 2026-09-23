@@ -19,13 +19,15 @@ class CallSignalingRouter {
   private final ChatRoomMemberRepository members;
   private final CallHistoryService history;
   private final ObjectMapper objectMapper;
+  private final ChatPushNotificationService pushNotifications;
   private final Map<UUID, ActiveCall> calls = new ConcurrentHashMap<>();
 
   CallSignalingRouter(ObjectMapper objectMapper, ChatRoomMemberRepository members,
-                      CallHistoryService history) {
+                      CallHistoryService history, ChatPushNotificationService pushNotifications) {
     this.objectMapper = objectMapper;
     this.members = members;
     this.history = history;
+    this.pushNotifications = pushNotifications;
   }
 
   synchronized Route route(String username, JsonNode message) {
@@ -94,6 +96,7 @@ class CallSignalingRouter {
       recipients.addAll(roomMembers);
       recipients.remove(username);
     }
+    pushNotifications.notifyIncomingCall(recipients, username, callId.toString(), roomId);
     return routeFor(username, recipients, message);
   }
 
