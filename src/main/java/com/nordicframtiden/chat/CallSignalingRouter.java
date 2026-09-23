@@ -48,7 +48,7 @@ class CallSignalingRouter {
           direct(username, callId, roomId, message);
       case "call.mute" ->
           broadcastToParticipants(username, callId, roomId, message);
-      case "call.decline" -> decline(username, callId, roomId, message);
+      case "call.decline" -> decline(username, callId, roomId, roomMembers, message);
       default -> throw new IllegalArgumentException("Unsupported call event");
     };
   }
@@ -114,10 +114,12 @@ class CallSignalingRouter {
     return routeFor(username, recipients, message);
   }
 
-  private Route decline(String username, UUID callId, long roomId, JsonNode message) {
-    ActiveCall activeCall = requiredCall(callId, roomId);
-    Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
+  private Route decline(String username, UUID callId, long roomId,
+                        List<String> roomMembers, JsonNode message) {
+    requiredCall(callId, roomId);
+    Set<String> recipients = new LinkedHashSet<>(roomMembers);
     recipients.remove(username);
+    calls.remove(callId);
     history.ended(callId, "DECLINED");
     return routeFor(username, recipients, message);
   }

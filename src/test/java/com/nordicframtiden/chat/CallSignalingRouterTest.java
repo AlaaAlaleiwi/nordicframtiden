@@ -66,4 +66,21 @@ class CallSignalingRouterTest {
     assertThat(route.recipients()).containsExactly("alice");
     assertThat(route.event().path("fromUsername").asText()).isEqualTo("bob");
   }
+
+  @Test
+  void declineEndsCallAndNotifiesRoomMembers() throws Exception {
+    when(members.findUsernamesByRoomId(10L)).thenReturn(List.of("alice", "bob"));
+    String callId = "be5194fd-af5d-46c9-b246-5c968f40b946";
+    router.route("alice", mapper.readTree(
+        "{\"type\":\"call.invite\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+
+    var route = router.route("bob", mapper.readTree(
+        "{\"type\":\"call.decline\",\"callId\":\"" + callId
+            + "\",\"roomId\":10,\"message\":\"I will call you later\"}"));
+
+    assertThat(route.recipients()).containsExactly("alice");
+    assertThatThrownBy(() -> router.route("bob", mapper.readTree(
+        "{\"type\":\"call.join\",\"callId\":\"" + callId + "\",\"roomId\":10}")))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }
