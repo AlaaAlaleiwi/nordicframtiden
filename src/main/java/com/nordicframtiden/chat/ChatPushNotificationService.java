@@ -70,6 +70,18 @@ public class ChatPushNotificationService {
         .forEach(subscription -> sender.send(subscription.getFirebaseInstallationId(), data));
   }
 
+  @Transactional(readOnly = true)
+  public void notifyChannelDeleted(Set<String> usernames, String channelName) {
+    if (usernames.isEmpty()) return;
+    var data = Map.of(
+        "title", "Channel deleted",
+        "body", "#" + channelName + " has been deleted",
+        "url", "/chat",
+        "type", "channel.deleted");
+    subscriptions.findByUserUsernameIn(usernames)
+        .forEach(subscription -> sender.send(subscription.getFirebaseInstallationId(), data));
+  }
+
   private AppUser current(Authentication authentication) {
     if (authentication == null) throw new ChatAccessDeniedException();
     return users.findByUsername(authentication.getName()).filter(AppUser::isEnabled)

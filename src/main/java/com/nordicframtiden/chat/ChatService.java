@@ -118,6 +118,19 @@ public class ChatService {
     return room;
   }
 
+  @Transactional
+  public void deleteChannel(Authentication auth, Long roomId) {
+    AppUser user = current(auth);
+    ChatRoom room = room(roomId);
+    if (room.getType() != ChatRoom.Type.CHANNEL || !isChannelAdmin(roomId, user.getId())) {
+      throw new ChatAccessDeniedException();
+    }
+    var formerMembers = new LinkedHashSet<>(members.findUsernamesByRoomId(roomId));
+    events.publish(roomId, "channel.deleted", room.getName());
+    notifications.notifyChannelDeleted(formerMembers, room.getName());
+    rooms.delete(room);
+  }
+
   @Transactional(readOnly = true)
   public List<ChatMessage> messages(Authentication auth, Long roomId, Long parentId, int limit) {
     AppUser user = current(auth);

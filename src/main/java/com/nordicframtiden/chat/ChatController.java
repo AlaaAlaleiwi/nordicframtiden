@@ -87,6 +87,12 @@ public class ChatController {
     return room(service.addChannelAdmins(auth, roomId, request.userIds()), service.current(auth));
   }
 
+  @DeleteMapping("/channels/{roomId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteChannel(Authentication auth, @PathVariable Long roomId) {
+    service.deleteChannel(auth, roomId);
+  }
+
   @GetMapping("/rooms/{roomId}/messages")
   public List<MessageDto> messages(Authentication auth, @PathVariable Long roomId,
                                    @RequestParam(required=false) Long parentId,
