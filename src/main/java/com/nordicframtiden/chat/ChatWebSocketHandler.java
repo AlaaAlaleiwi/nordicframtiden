@@ -74,6 +74,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler implements ChatEv
     }
   }
 
+  java.util.List<CallSignalingRouter.ActiveChannelCall> activeChannelCalls(String username) {
+    return callRouter.activeChannelCalls(username);
+  }
+
   @Override
   public void publish(Long roomId, String type, Object payload) {
     sendTo(members.findUsernamesByRoomId(roomId), Map.of("type", type, "roomId", roomId, "payload", payload));

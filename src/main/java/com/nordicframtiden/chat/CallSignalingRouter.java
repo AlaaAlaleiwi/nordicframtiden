@@ -24,6 +24,17 @@ class CallSignalingRouter {
   private final AppUserRepository users;
   private final Map<UUID, ActiveCall> calls = new ConcurrentHashMap<>();
 
+  synchronized List<ActiveChannelCall> activeChannelCalls(String username) {
+    return calls.entrySet().stream()
+        .filter(entry -> entry.getValue().isChannel)
+        .filter(entry -> !entry.getValue().participants.isEmpty())
+        .filter(entry -> members.findUsernamesByRoomId(entry.getValue().roomId).contains(username))
+        .map(entry -> new ActiveChannelCall(
+            entry.getKey(), entry.getValue().roomId,
+            Set.copyOf(entry.getValue().participants)))
+        .toList();
+  }
+
   CallSignalingRouter(ObjectMapper objectMapper, ChatRoomMemberRepository members,
                       CallHistoryService history, ChatPushNotificationService pushNotifications,
                       AppUserRepository users) {
@@ -155,7 +166,13 @@ class CallSignalingRouter {
 
   private Route decline(String username, UUID callId, long roomId,
                         List<String> roomMembers, JsonNode message) {
-    requiredCall(callId, roomId);
+    ActiveCall activeCall = requiredCall(callId, roomId);
+    activeCall.invited.remove(username);
+    if (activeCall.participants.size() > 1) {
+      Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
+      recipients.remove(username);
+      return routeFor(username, recipients, message);
+    }
     Set<String> recipients = new LinkedHashSet<>(roomMembers);
     recipients.remove(username);
     calls.remove(callId);
@@ -165,6 +182,7 @@ class CallSignalingRouter {
 
   private Route busy(String username, UUID callId, long roomId, JsonNode message) {
     ActiveCall activeCall = requiredCall(callId, roomId);
+    activeCall.invited.remove(username);
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     recipients.remove(username);
     return routeFor(username, recipients, message);
@@ -215,6 +233,7 @@ class CallSignalingRouter {
   }
 
   record Route(Set<String> recipients, ObjectNode event) {}
+  record ActiveChannelCall(UUID callId, long roomId, Set<String> participants) {}
   private record ActiveCall(long roomId, boolean isChannel, Set<String> participants,
                             Set<String> invited) {}
 }

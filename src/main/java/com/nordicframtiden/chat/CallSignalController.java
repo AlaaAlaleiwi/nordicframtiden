@@ -8,6 +8,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/calls")
@@ -21,6 +22,11 @@ class CallSignalController {
   }
 
   record TerminalSignalRequest(@NotNull Long roomId, String message) {}
+
+  @GetMapping("/active-channels")
+  List<CallSignalingRouter.ActiveChannelCall> activeChannels(Authentication authentication) {
+    return sockets.activeChannelCalls(authentication.getName());
+  }
 
   @PostMapping("/{callId}/join")
   @ResponseStatus(HttpStatus.NO_CONTENT)

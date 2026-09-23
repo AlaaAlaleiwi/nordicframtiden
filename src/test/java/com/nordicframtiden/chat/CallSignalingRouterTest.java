@@ -86,4 +86,65 @@ class CallSignalingRouterTest {
         "{\"type\":\"call.join\",\"callId\":\"" + callId + "\",\"roomId\":10}")))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void oneParticipantLeavingDoesNotEndMultipartyDirectCall() throws Exception {
+    when(members.findUsernamesByRoomId(10L)).thenReturn(List.of("alice", "bob", "carol"));
+    String callId = "be5194fd-af5d-46c9-b246-5c968f40b946";
+    router.route("alice", mapper.readTree(
+        "{\"type\":\"call.invite\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+    router.route("bob", mapper.readTree(
+        "{\"type\":\"call.join\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+    router.route("carol", mapper.readTree(
+        "{\"type\":\"call.join\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+
+    var leaveRoute = router.route("carol", mapper.readTree(
+        "{\"type\":\"call.leave\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+    var offerRoute = router.route("alice", mapper.readTree(
+        "{\"type\":\"call.offer\",\"callId\":\"" + callId
+            + "\",\"roomId\":10,\"targetUsername\":\"bob\",\"sdp\":\"offer\"}"));
+
+    assertThat(leaveRoute.recipients()).containsExactlyInAnyOrder("alice", "bob");
+    assertThat(offerRoute.recipients()).containsExactly("bob");
+  }
+
+  @Test
+  void addedParticipantDecliningDoesNotEndExistingCall() throws Exception {
+    when(members.findUsernamesByRoomId(10L)).thenReturn(List.of("alice", "bob", "carol"));
+    String callId = "be5194fd-af5d-46c9-b246-5c968f40b946";
+    router.route("alice", mapper.readTree(
+        "{\"type\":\"call.invite\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+    router.route("bob", mapper.readTree(
+        "{\"type\":\"call.join\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+
+    var declineRoute = router.route("carol", mapper.readTree(
+        "{\"type\":\"call.decline\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+    var offerRoute = router.route("alice", mapper.readTree(
+        "{\"type\":\"call.offer\",\"callId\":\"" + callId
+            + "\",\"roomId\":10,\"targetUsername\":\"bob\",\"sdp\":\"offer\"}"));
+
+    assertThat(declineRoute.recipients()).containsExactlyInAnyOrder("alice", "bob");
+    assertThat(offerRoute.recipients()).containsExactly("bob");
+  }
+
+  @Test
+  void channelMemberCanDiscoverAndRejoinCallAfterLeaving() throws Exception {
+    when(members.findUsernamesByRoomId(10L)).thenReturn(List.of("alice", "bob"));
+    String callId = "be5194fd-af5d-46c9-b246-5c968f40b946";
+    router.route("alice", mapper.readTree(
+        "{\"type\":\"call.invite\",\"callId\":\"" + callId
+            + "\",\"roomId\":10,\"isChannel\":true}"));
+    router.route("bob", mapper.readTree(
+        "{\"type\":\"call.join\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+    router.route("bob", mapper.readTree(
+        "{\"type\":\"call.leave\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+
+    var activeCall = router.activeChannelCalls("bob").getFirst();
+    var rejoinRoute = router.route("bob", mapper.readTree(
+        "{\"type\":\"call.join\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+
+    assertThat(activeCall.callId().toString()).isEqualTo(callId);
+    assertThat(activeCall.participants()).containsExactly("alice");
+    assertThat(rejoinRoute.recipients()).containsExactly("alice");
+  }
 }
