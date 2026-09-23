@@ -33,7 +33,8 @@ public class ChatController {
 
   public record ParticipantDto(Long id, String username, String displayName, boolean online) {}
   public record RoomDto(Long id, String type, String name, String description, boolean privateChannel,
-                        boolean member, boolean canManage, boolean owner, long unreadCount, List<ParticipantDto> participants,
+                        boolean member, boolean canManage, boolean owner, Long ownerUserId,
+                        long unreadCount, List<ParticipantDto> participants,
                         List<Long> adminUserIds) {}
   public record ReactionDto(String emoji, long count, boolean mine) {}
   public record MessageDto(Long id, Long roomId, Long parentId, ParticipantDto sender, String body,
@@ -144,10 +145,11 @@ public class ChatController {
     List<ChatRoomMember> memberships = members.findByRoomId(room.getId());
     List<Long> adminUserIds = memberships.stream().filter(ChatRoomMember::isChannelAdmin)
         .map(member -> member.getUser().getId()).toList();
-    boolean canManage = room.getType() == ChatRoom.Type.CHANNEL && adminUserIds.contains(me.getId());
     boolean owner = room.getType() == ChatRoom.Type.CHANNEL && room.getCreatedBy().getId().equals(me.getId());
+    boolean canManage = room.getType() == ChatRoom.Type.CHANNEL
+        && (owner || adminUserIds.contains(me.getId()));
     return new RoomDto(room.getId(), room.getType().name(), displayName, room.getDescription(),
-        room.isPrivateChannel(), isMember, canManage, owner,
+        room.isPrivateChannel(), isMember, canManage, owner, room.getCreatedBy().getId(),
         isMember ? service.unreadCount(room.getId(), me.getId()) : 0, roomParticipants, adminUserIds);
   }
 
