@@ -64,6 +64,16 @@ public class ChatWebSocketHandler extends TextWebSocketHandler implements ChatEv
     }
   }
 
+  void routeCallSignal(String username, com.fasterxml.jackson.databind.JsonNode signal) {
+    try {
+      var route = callRouter.route(username, signal);
+      sendTo(route.recipients(), route.event());
+    } catch (RuntimeException error) {
+      sendTo(Set.of(username), Map.of("type", "call.error", "message", error.getMessage()));
+      throw error;
+    }
+  }
+
   @Override
   public void publish(Long roomId, String type, Object payload) {
     sendTo(members.findUsernamesByRoomId(roomId), Map.of("type", type, "roomId", roomId, "payload", payload));
