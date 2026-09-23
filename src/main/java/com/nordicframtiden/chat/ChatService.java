@@ -105,7 +105,7 @@ public class ChatService {
   public ChatRoom addChannelAdmins(Authentication auth, Long roomId, List<Long> userIds) {
     AppUser user = current(auth);
     ChatRoom room = room(roomId);
-    if (room.getType() != ChatRoom.Type.CHANNEL || !isChannelAdmin(roomId, user.getId())) {
+    if (room.getType() != ChatRoom.Type.CHANNEL || !isChannelOwner(room, user.getId())) {
       throw new ChatAccessDeniedException();
     }
     for (Long userId : new LinkedHashSet<>(userIds == null ? List.of() : userIds)) {
@@ -119,10 +119,28 @@ public class ChatService {
   }
 
   @Transactional
+  public ChatRoom removeChannelAdmin(Authentication auth, Long roomId, Long userId) {
+    AppUser user = current(auth);
+    ChatRoom room = room(roomId);
+    if (room.getType() != ChatRoom.Type.CHANNEL || !isChannelOwner(room, user.getId())) {
+      throw new ChatAccessDeniedException();
+    }
+    if (room.getCreatedBy().getId().equals(userId)) {
+      throw new IllegalArgumentException("The channel owner cannot be removed as an admin");
+    }
+    ChatRoomMember member = members.findByRoomIdAndUserId(roomId, userId)
+        .orElseThrow(() -> new IllegalArgumentException("Channel admin must already be a member"));
+    member.setChannelAdmin(false);
+    members.save(member);
+    events.publish(roomId, "channel.members.updated", roomId);
+    return room;
+  }
+
+  @Transactional
   public void deleteChannel(Authentication auth, Long roomId) {
     AppUser user = current(auth);
     ChatRoom room = room(roomId);
-    if (room.getType() != ChatRoom.Type.CHANNEL || !isChannelAdmin(roomId, user.getId())) {
+    if (room.getType() != ChatRoom.Type.CHANNEL || !isChannelOwner(room, user.getId())) {
       throw new ChatAccessDeniedException();
     }
     var formerMembers = new LinkedHashSet<>(members.findUsernamesByRoomId(roomId));
@@ -231,6 +249,9 @@ public class ChatService {
   }
   private boolean isChannelAdmin(Long roomId, Long userId) {
     return members.findByRoomIdAndUserId(roomId, userId).map(ChatRoomMember::isChannelAdmin).orElse(false);
+  }
+  private boolean isChannelOwner(ChatRoom room, Long userId) {
+    return room.getCreatedBy().getId().equals(userId);
   }
   private void requireMember(Long roomId, Long userId) {
     if (!members.existsByRoomIdAndUserId(roomId, userId)) throw new ChatAccessDeniedException();

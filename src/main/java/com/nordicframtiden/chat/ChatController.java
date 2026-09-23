@@ -33,7 +33,7 @@ public class ChatController {
 
   public record ParticipantDto(Long id, String username, String displayName, boolean online) {}
   public record RoomDto(Long id, String type, String name, String description, boolean privateChannel,
-                        boolean member, boolean canManage, long unreadCount, List<ParticipantDto> participants,
+                        boolean member, boolean canManage, boolean owner, long unreadCount, List<ParticipantDto> participants,
                         List<Long> adminUserIds) {}
   public record ReactionDto(String emoji, long count, boolean mine) {}
   public record MessageDto(Long id, Long roomId, Long parentId, ParticipantDto sender, String body,
@@ -85,6 +85,12 @@ public class ChatController {
   public RoomDto addChannelAdmins(Authentication auth, @PathVariable Long roomId,
                                   @Valid @RequestBody AddChannelAdminsRequest request) {
     return room(service.addChannelAdmins(auth, roomId, request.userIds()), service.current(auth));
+  }
+
+  @DeleteMapping("/channels/{roomId}/admins/{userId}")
+  public RoomDto removeChannelAdmin(Authentication auth, @PathVariable Long roomId,
+                                    @PathVariable Long userId) {
+    return room(service.removeChannelAdmin(auth, roomId, userId), service.current(auth));
   }
 
   @DeleteMapping("/channels/{roomId}")
@@ -139,8 +145,9 @@ public class ChatController {
     List<Long> adminUserIds = memberships.stream().filter(ChatRoomMember::isChannelAdmin)
         .map(member -> member.getUser().getId()).toList();
     boolean canManage = room.getType() == ChatRoom.Type.CHANNEL && adminUserIds.contains(me.getId());
+    boolean owner = room.getType() == ChatRoom.Type.CHANNEL && room.getCreatedBy().getId().equals(me.getId());
     return new RoomDto(room.getId(), room.getType().name(), displayName, room.getDescription(),
-        room.isPrivateChannel(), isMember, canManage,
+        room.isPrivateChannel(), isMember, canManage, owner,
         isMember ? service.unreadCount(room.getId(), me.getId()) : 0, roomParticipants, adminUserIds);
   }
 
