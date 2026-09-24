@@ -2,7 +2,6 @@ package com.nordicframtiden.settings;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -11,16 +10,12 @@ import java.util.Optional;
 @Service
 public class AppSettingsService {
 
-    private static final String MAIL_ENABLED = "mail.enabled";
-    private static final String MAIL_PROVIDER = "mail.provider";
-    private static final String MAIL_HOST = "mail.host";
-    private static final String MAIL_PORT = "mail.port";
-    private static final String MAIL_USERNAME = "mail.username";
-    private static final String MAIL_FROM = "mail.from";
-    private static final String MAIL_TO = "mail.to";
-
     private final AppSettingRepository repo;
 
+    // Email delivery is configured through the deployment environment
+    // (MAIL_* variables, see application.yml). The database is never
+    // consulted for mail settings, so the runtime configuration has a
+    // single source of truth: the server configuration.
     @Value("${spring.mail.password:}")
     private String smtpPassword = "";
 
@@ -51,14 +46,14 @@ public class AppSettingsService {
 
     public Map<String, String> getMailSettings() {
         return Map.of(
-            "enabled", get(MAIL_ENABLED, defaultMailEnabled),
-            "provider", get(MAIL_PROVIDER, defaultMailProvider),
-            "host", get(MAIL_HOST, defaultMailHost),
-            "port", get(MAIL_PORT, defaultMailPort),
-            "username", get(MAIL_USERNAME, defaultMailUsername),
+            "enabled", defaultMailEnabled == null ? "false" : defaultMailEnabled,
+            "provider", defaultMailProvider == null ? "smtp" : defaultMailProvider,
+            "host", defaultMailHost == null ? "" : defaultMailHost,
+            "port", defaultMailPort == null ? "587" : defaultMailPort,
+            "username", defaultMailUsername == null ? "" : defaultMailUsername,
             "passwordConfigured", Boolean.toString(smtpPassword != null && !smtpPassword.isBlank()),
-            "from", get(MAIL_FROM, defaultMailFrom),
-            "to", get(MAIL_TO, defaultMailTo)
+            "from", defaultMailFrom == null ? "" : defaultMailFrom,
+            "to", defaultMailTo == null ? "" : defaultMailTo
         );
     }
 
@@ -69,23 +64,12 @@ public class AppSettingsService {
         return runtime;
     }
 
-    @Transactional
-    public void saveMailSettings(MailSettings settings) {
-        set(MAIL_ENABLED, Boolean.toString(settings.enabled()));
-        set(MAIL_PROVIDER, settings.provider() == null ? "smtp" : settings.provider());
-        set(MAIL_HOST, settings.host() == null ? "" : settings.host());
-        set(MAIL_PORT, settings.port() == null ? "587" : String.valueOf(settings.port()));
-        set(MAIL_USERNAME, settings.username() == null ? "" : settings.username());
-        set(MAIL_FROM, settings.from() == null ? "" : settings.from());
-        set(MAIL_TO, settings.to() == null ? "" : settings.to());
-    }
-
     public boolean isMailEnabled() {
-        return Boolean.parseBoolean(get(MAIL_ENABLED, defaultMailEnabled));
+        return Boolean.parseBoolean(defaultMailEnabled);
     }
 
     public String getMailProvider() {
-        return get(MAIL_PROVIDER, defaultMailProvider);
+        return defaultMailProvider == null ? "smtp" : defaultMailProvider;
     }
 
     public String getRaw(String key, String defaultValue) {
@@ -104,20 +88,4 @@ public class AppSettingsService {
         String from,
         String to
     ) {}
-
-    private String get(String key, String defaultValue) {
-        return repo.findByKey(key)
-            .map(AppSetting::getValue)
-            .filter(v -> !v.isBlank())
-            .orElse(defaultValue);
-    }
-
-    private void set(String key, String value) {
-        Optional<AppSetting> existing = repo.findByKey(key);
-        if (existing.isPresent()) {
-            existing.get().setValue(value == null ? "" : value);
-            return;
-        }
-        repo.save(new AppSetting(key, value == null ? "" : value));
-    }
 }

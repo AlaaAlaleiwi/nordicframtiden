@@ -70,13 +70,17 @@ class AppSettingsServiceTest {
     }
 
     @Test
-    void savingMailSettingsNeverWritesPasswordToDatabase() {
+    void mailSettingsComeFromEnvironmentOnly() {
         AppSettingRepository repo = mock(AppSettingRepository.class);
+        when(repo.findByKey("mail.host"))
+            .thenReturn(Optional.of(new AppSetting("mail.host", "database-smtp.example.com")));
         AppSettingsService service = new AppSettingsService(repo);
+        ReflectionTestUtils.setField(service, "defaultMailEnabled", "true");
+        ReflectionTestUtils.setField(service, "defaultMailHost", "env-smtp.example.com");
 
-        service.saveMailSettings(new AppSettingsService.MailSettings(
-            true, "smtp", "smtp.example.com", 587, "mailer", "from@example.com", "to@example.com"));
+        Map<String, String> result = service.getMailSettings();
 
-        verify(repo, never()).findByKey("mail.password");
+        assertEquals("env-smtp.example.com", result.get("host"));
+        verify(repo, never()).findByKey("mail.enabled");
     }
 }

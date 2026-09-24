@@ -20,10 +20,4 @@ public class AppSettingsController {
     public Map<String, String> getMailSettings() {
         return service.getMailSettings();
     }
-
-    @PutMapping("/mail")
-    public Map<String, String> saveMailSettings(@RequestBody AppSettingsService.MailSettings settings) {
-        service.saveMailSettings(settings);
-        return service.getMailSettings();
-    }
 }

@@ -46,16 +46,17 @@ class AppSettingsControllerSecurityTest {
     }
 
     @Test
-    @WithMockUser(roles = "STAFF")
-    void staffCannotChangeSmtpConfiguration() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void mailSettingsCannotBeChangedViaApi() throws Exception {
+        // Mail configuration lives in the deployment environment only;
+        // there is deliberately no write endpoint.
         mvc.perform(put("/api/settings/mail").with(csrf())
                 .contentType("application/json")
                 .content("""
                     {"enabled":true,"host":"smtp.example.com","port":587}
                     """))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isNotFound());
     }
-
     @Test
     @WithMockUser(roles = "ADMIN")
     void adminResponseContainsOnlyPasswordConfiguredIndicator() throws Exception {
