@@ -17,6 +17,7 @@ class CallHistory {
   @Column(name = "answered_at") private Instant answeredAt;
   @Column(name = "ended_at") private Instant endedAt;
   @Column(nullable = false, length = 20) private String outcome = "RINGING";
+  @Column(nullable = false) private boolean video = false;
 
   public UUID getCallId() { return callId; }
   public void setCallId(UUID callId) { this.callId = callId; }
@@ -31,4 +32,6 @@ class CallHistory {
   public void setEndedAt(Instant endedAt) { this.endedAt = endedAt; }
   public String getOutcome() { return outcome; }
   public void setOutcome(String outcome) { this.outcome = outcome; }
+  public boolean isVideo() { return video; }
+  public void setVideo(boolean video) { this.video = video; }
 }

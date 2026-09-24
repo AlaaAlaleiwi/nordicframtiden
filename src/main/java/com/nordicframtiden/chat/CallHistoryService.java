@@ -26,11 +26,17 @@ public class CallHistoryService {
 
   @Transactional
   public void started(UUID callId, long roomId, String callerUsername) {
+    started(callId, roomId, callerUsername, false);
+  }
+
+  @Transactional
+  public void started(UUID callId, long roomId, String callerUsername, boolean video) {
     if (history.existsById(callId)) return;
     CallHistory item = new CallHistory();
     item.setCallId(callId);
     item.setRoom(rooms.findById(roomId).orElseThrow());
     item.setCaller(users.findByUsername(callerUsername).orElseThrow());
+    item.setVideo(video);
     history.save(item);
   }
 
@@ -60,7 +66,7 @@ public class CallHistoryService {
             item.getStartedAt(), item.getAnsweredAt(), item.getEndedAt(),
             item.getEndedAt() != null && item.getAnsweredAt() != null
                 ? Duration.between(item.getAnsweredAt(), item.getEndedAt()).toSeconds() : 0,
-            item.getOutcome()))
+            item.getOutcome(), item.isVideo()))
         .toList();
   }
 
@@ -76,5 +82,5 @@ public class CallHistoryService {
 
   public record Item(UUID callId, Long roomId, String roomName, String roomType,
                      String callerUsername, Instant startedAt, Instant answeredAt,
-                     Instant endedAt, long durationSeconds, String outcome) {}
+                     Instant endedAt, long durationSeconds, String outcome, boolean video) {}
 }

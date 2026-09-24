@@ -68,7 +68,7 @@ class CallSignalingRouter {
       case "call.leave" -> leave(username, callId, roomId, roomMembers, message);
       case "call.offer", "call.answer", "call.ice" ->
           direct(username, callId, roomId, message);
-      case "call.mute" ->
+      case "call.mute", "call.video" ->
           broadcastToParticipants(username, callId, roomId, message);
       case "call.decline" -> decline(username, callId, roomId, roomMembers, message);
       case "call.busy" -> busy(username, callId, roomId, message);
@@ -109,7 +109,8 @@ class CallSignalingRouter {
             new LinkedHashSet<>()));
     requireRoom(activeCall, roomId);
     activeCall.participants.add(username);
-    history.started(callId, roomId, username);
+    boolean video = message.path("isVideo").asBoolean(false);
+    history.started(callId, roomId, username, video);
     Set<String> recipients = new LinkedHashSet<>();
     String target = message.path("targetUsername").asText("").trim();
     if (!target.isEmpty()) {
@@ -123,7 +124,7 @@ class CallSignalingRouter {
       recipients.remove(username);
     }
     activeCall.invited.addAll(recipients);
-    pushNotifications.notifyIncomingCall(recipients, username, callId.toString(), roomId);
+    pushNotifications.notifyIncomingCall(recipients, username, callId.toString(), roomId, video);
     return routeFor(username, recipients, message);
   }
 
