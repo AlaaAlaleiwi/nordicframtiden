@@ -4,6 +4,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.cache.CacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -14,11 +15,14 @@ public class TaxTableImportStore {
   private static final int MINIMUM_COMPLETE_ROW_COUNT = 7_000;
 
   private final JdbcTemplate jdbcTemplate;
+  // Optional: profiles with spring.cache.type=none (e.g. tests) expose no
+  // CacheManager bean. Caching is only an optimization here — the manager
+  // is used solely to evict "taxTableRows" after an import.
   private final CacheManager cacheManager;
 
-  public TaxTableImportStore(JdbcTemplate jdbcTemplate, CacheManager cacheManager) {
+  public TaxTableImportStore(JdbcTemplate jdbcTemplate, ObjectProvider<CacheManager> cacheManager) {
     this.jdbcTemplate = jdbcTemplate;
-    this.cacheManager = cacheManager;
+    this.cacheManager = cacheManager.getIfAvailable();
   }
 
   public boolean hasCompleteYear(int year) {
@@ -59,7 +63,7 @@ public class TaxTableImportStore {
            col_1, col_2, col_3, col_4, col_5, col_6, percentage)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, rows, 500, this::setParameters);
-    var cache = cacheManager.getCache("taxTableRows");
+    var cache = cacheManager != null ? cacheManager.getCache("taxTableRows") : null;
     if (cache != null) {
       cache.clear();
     }
