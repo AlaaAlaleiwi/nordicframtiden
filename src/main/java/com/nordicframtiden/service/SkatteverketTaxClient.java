@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +27,7 @@ public class SkatteverketTaxClient {
   private final HttpClient httpClient;
   private final ObjectMapper objectMapper;
 
+  @Autowired
   public SkatteverketTaxClient(
       @Value("${app.skatteverket.tax.enabled:false}") boolean enabled,
       @Value("${app.skatteverket.tax.base-url}") URI baseUri,

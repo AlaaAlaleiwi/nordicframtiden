@@ -19,10 +19,13 @@ public record NetSalaryResponse(
     BigDecimal oneTimeTax,
     BigDecimal taxFreeAmount,
     BigDecimal projectedAnnualIncome,
-    List<AdjustmentLine> adjustments
+    List<AdjustmentLine> adjustments,
+    BigDecimal baseHourlySalary,
+    BigDecimal saturdayOb,
+    BigDecimal sundayOb
 ) {
   public NetSalaryResponse(Long userId,String monthKey,BigDecimal hourlyCost,BigDecimal totalHours,BigDecimal grossSalary,Integer taxYear,String municipalityCode,Integer tableNumber,Integer taxColumn,BigDecimal preliminaryTax,BigDecimal netSalary) {
-    this(userId,monthKey,hourlyCost,totalHours,grossSalary,taxYear,municipalityCode,tableNumber,taxColumn,preliminaryTax,netSalary,preliminaryTax,BigDecimal.ZERO,BigDecimal.ZERO,grossSalary.multiply(BigDecimal.valueOf(12)),List.of());
+    this(userId,monthKey,hourlyCost,totalHours,grossSalary,taxYear,municipalityCode,tableNumber,taxColumn,preliminaryTax,netSalary,preliminaryTax,BigDecimal.ZERO,BigDecimal.ZERO,grossSalary.multiply(BigDecimal.valueOf(12)),List.of(),grossSalary,BigDecimal.ZERO,BigDecimal.ZERO);
   }
   public record AdjustmentLine(Long id,String name,BigDecimal amount,SalaryAdjustment.TaxTreatment taxTreatment,
       SalaryAdjustment.ReimbursementType reimbursementType,BigDecimal quantity,String receiptReference,

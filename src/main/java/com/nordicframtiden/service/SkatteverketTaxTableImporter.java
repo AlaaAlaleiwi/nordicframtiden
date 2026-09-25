@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -45,6 +46,7 @@ public class SkatteverketTaxTableImporter {
   private final URI indexUri;
   private final URI oneTimeTableUri;
 
+  @Autowired
   public SkatteverketTaxTableImporter(
       TaxTableImportStore store,
       @Value("${app.skatteverket.tax-table-import.index-url}") URI indexUri,

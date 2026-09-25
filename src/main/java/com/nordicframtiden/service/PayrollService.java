@@ -6,6 +6,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.DayOfWeek;
 
 import org.springframework.stereotype.Service;
 
@@ -54,19 +56,19 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
   var shifts = staffScheduleService.listForUser(userId, range.start(), range.end());
 
   BigDecimal totalHours = BigDecimal.ZERO;
-  BigDecimal gross = BigDecimal.ZERO;
+  PayBreakdown pay = PayBreakdown.zero();
   for (var s : shifts) {
     Instant start = s.getStartAt().toInstant();
     Instant end = s.getEndAt().toInstant();
     totalHours = totalHours.add(hoursBetween(start, end));
-    gross = gross.add(shiftGross(start, end, profile.getHourlyCost()));
+    pay = pay.add(shiftPay(start, end, profile.getHourlyCost()));
   }
 
   int taxYear = year;
   int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
   int tableNumber = taxService.resolveTableNumber(profile.getMunicipalityCode(), taxYear);
 
-  return calculate(userId,year,month,profile.getHourlyCost(),totalHours,gross,taxColumn,tableNumber,profile.getMunicipalityCode());
+  return calculate(userId,year,month,profile.getHourlyCost(),totalHours,pay,taxColumn,tableNumber,profile.getMunicipalityCode());
 }
   public NetSalaryResponse netSalaryForUserMonth(Long userId, int year, int month) {
 
@@ -81,22 +83,23 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     var shifts = scheduleService.listForUser(userId, range.start(), range.end());
 
     BigDecimal totalHours = BigDecimal.ZERO;
-    BigDecimal gross = BigDecimal.ZERO;
+    PayBreakdown pay = PayBreakdown.zero();
     for (var s : shifts) {
       Instant start = s.getStartAt().toInstant();
       Instant end = s.getEndAt().toInstant();
       totalHours = totalHours.add(hoursBetween(start, end));
-      gross = gross.add(shiftGross(start, end, profile.getHourlyCost()));
+      pay = pay.add(shiftPay(start, end, profile.getHourlyCost()));
     }
 
     int taxYear = year;
     int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
     int tableNumber = taxService.resolveTableNumber(profile.getMunicipalityCode(), taxYear);
 
-    return calculate(userId,year,month,profile.getHourlyCost(),totalHours,gross,taxColumn,tableNumber,profile.getMunicipalityCode());
+    return calculate(userId,year,month,profile.getHourlyCost(),totalHours,pay,taxColumn,tableNumber,profile.getMunicipalityCode());
   }
 
-  private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,BigDecimal hours,BigDecimal baseGross,int column,int table,String municipality){
+  private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,BigDecimal hours,PayBreakdown pay,int column,int table,String municipality){
+    BigDecimal baseGross = pay.total();
     var items=adjustmentService.forMonth(userId,year,month);
     BigDecimal regular=items.stream().map(a -> {
       if(a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.REGULAR_TAXABLE) return a.getAmount();
@@ -117,7 +120,7 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     BigDecimal taxableGross=monthlyTaxable.add(oneTime);
     BigDecimal net=taxableGross.subtract(tax).add(taxFree);
     var lines=items.stream().map(a->new NetSalaryResponse.AdjustmentLine(a.getId(),a.getName(),a.getAmount(),a.getTaxTreatment(),a.getReimbursementType(),a.getQuantity(),a.getReceiptReference(),a.isTaxFreeEligibilityConfirmed(),adjustmentService.taxFreePortion(a))).toList();
-    return new NetSalaryResponse(userId,String.format("%04d-%02d",year,month),hourlyCost,hours.setScale(2,RoundingMode.HALF_UP),taxableGross.setScale(2,RoundingMode.HALF_UP),year,municipality,table,column,tax.setScale(2),net.setScale(2),BigDecimal.valueOf(regularTaxInt).setScale(2),oneTimeTax.setScale(2),taxFree.setScale(2),projected.setScale(2),lines);
+    return new NetSalaryResponse(userId,String.format("%04d-%02d",year,month),hourlyCost,hours.setScale(2,RoundingMode.HALF_UP),taxableGross.setScale(2,RoundingMode.HALF_UP),year,municipality,table,column,tax.setScale(2),net.setScale(2),BigDecimal.valueOf(regularTaxInt).setScale(2),oneTimeTax.setScale(2),taxFree.setScale(2),projected.setScale(2),lines,pay.base().setScale(2,RoundingMode.HALF_UP),pay.saturdayOb().setScale(2,RoundingMode.HALF_UP),pay.sundayOb().setScale(2,RoundingMode.HALF_UP));
   }
 
 
@@ -136,9 +139,26 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     return BigDecimal.valueOf(ms).divide(BigDecimal.valueOf(3600000), 6, RoundingMode.HALF_UP);
   }
 
-  private BigDecimal shiftGross(Instant start, Instant end, BigDecimal hourlyCost) {
-    if (start == null || end == null) return BigDecimal.ZERO;
-    if (!end.isAfter(start)) return BigDecimal.ZERO;
-    return hourlyCost.multiply(hoursBetween(start, end));
+  private PayBreakdown shiftPay(Instant start, Instant end, BigDecimal hourlyCost) {
+    if (start == null || end == null || !end.isAfter(start)) return PayBreakdown.zero();
+    BigDecimal base = BigDecimal.ZERO, saturday = BigDecimal.ZERO, sunday = BigDecimal.ZERO;
+    Instant cursor = start;
+    while (cursor.isBefore(end)) {
+      ZonedDateTime local = cursor.atZone(STOCKHOLM);
+      Instant nextMidnight = local.toLocalDate().plusDays(1).atStartOfDay(STOCKHOLM).toInstant();
+      Instant segmentEnd = end.isBefore(nextMidnight) ? end : nextMidnight;
+      BigDecimal segmentPay = hourlyCost.multiply(hoursBetween(cursor, segmentEnd));
+      base = base.add(segmentPay);
+      if (local.getDayOfWeek() == DayOfWeek.SATURDAY) saturday = saturday.add(segmentPay.multiply(new BigDecimal("0.5")));
+      if (local.getDayOfWeek() == DayOfWeek.SUNDAY) sunday = sunday.add(segmentPay);
+      cursor = segmentEnd;
+    }
+    return new PayBreakdown(base, saturday, sunday);
+  }
+
+  private record PayBreakdown(BigDecimal base, BigDecimal saturdayOb, BigDecimal sundayOb) {
+    static PayBreakdown zero(){return new PayBreakdown(BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO);}
+    BigDecimal total(){return base.add(saturdayOb).add(sundayOb);}
+    PayBreakdown add(PayBreakdown other){return new PayBreakdown(base.add(other.base),saturdayOb.add(other.saturdayOb),sundayOb.add(other.sundayOb));}
   }
 }
