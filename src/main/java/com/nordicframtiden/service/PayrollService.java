@@ -5,9 +5,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.time.DayOfWeek;
-import java.time.ZonedDateTime;
+import java.time.ZoneId;
 
 import org.springframework.stereotype.Service;
 
@@ -18,6 +16,7 @@ import com.nordicframtiden.service.model.NetSalaryResponse;
 
 @Service
 public class PayrollService {
+  private static final ZoneId STOCKHOLM = ZoneId.of("Europe/Stockholm");
 
   private final UserService userService;
   private final TaxService taxService;
@@ -99,19 +98,25 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
 
   private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,BigDecimal hours,BigDecimal baseGross,int column,int table,String municipality){
     var items=adjustmentService.forMonth(userId,year,month);
-    BigDecimal regular=items.stream().filter(a->a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.REGULAR_TAXABLE).map(a->a.getAmount()).reduce(BigDecimal.ZERO,BigDecimal::add);
+    BigDecimal regular=items.stream().map(a -> {
+      if(a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.REGULAR_TAXABLE) return a.getAmount();
+      if(a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.TAX_FREE) return a.getAmount().subtract(adjustmentService.taxFreePortion(a));
+      return BigDecimal.ZERO;
+    }).reduce(BigDecimal.ZERO,BigDecimal::add);
     BigDecimal oneTime=items.stream().filter(a->a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE).map(a->a.getAmount()).reduce(BigDecimal.ZERO,BigDecimal::add);
-    BigDecimal taxFree=items.stream().filter(a->a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.TAX_FREE).map(a->a.getAmount()).reduce(BigDecimal.ZERO,BigDecimal::add);
+    BigDecimal taxFree=items.stream().map(adjustmentService::taxFreePortion).reduce(BigDecimal.ZERO,BigDecimal::add);
     BigDecimal monthlyTaxable=baseGross.add(regular);
     int regularTaxInt=taxService.lookupPreliminaryTax(year,table,column,monthlyTaxable.setScale(0,RoundingMode.HALF_UP).intValue());
     BigDecimal projected=monthlyTaxable.multiply(BigDecimal.valueOf(12)).add(adjustmentService.annualOneTimeTotal(userId,year));
-    int rate = oneTime.signum() == 0 ? 0 : oneTimeTaxService.rateFor(
-        year, column, projected.setScale(0,RoundingMode.HALF_UP).intValue());
+    int rate = oneTime.signum() == 0 ? 0
+        : monthlyTaxable.signum() == 0 ? 30
+        : oneTimeTaxService.rateFor(year, column,
+            projected.setScale(0,RoundingMode.HALF_UP).intValue());
     BigDecimal oneTimeTax=oneTime.multiply(BigDecimal.valueOf(rate)).divide(BigDecimal.valueOf(100),0,RoundingMode.HALF_UP);
     BigDecimal tax=BigDecimal.valueOf(regularTaxInt).add(oneTimeTax);
     BigDecimal taxableGross=monthlyTaxable.add(oneTime);
     BigDecimal net=taxableGross.subtract(tax).add(taxFree);
-    var lines=items.stream().map(a->new NetSalaryResponse.AdjustmentLine(a.getId(),a.getName(),a.getAmount(),a.getTaxTreatment())).toList();
+    var lines=items.stream().map(a->new NetSalaryResponse.AdjustmentLine(a.getId(),a.getName(),a.getAmount(),a.getTaxTreatment(),a.getReimbursementType(),a.getQuantity(),a.getReceiptReference(),a.isTaxFreeEligibilityConfirmed(),adjustmentService.taxFreePortion(a))).toList();
     return new NetSalaryResponse(userId,String.format("%04d-%02d",year,month),hourlyCost,hours.setScale(2,RoundingMode.HALF_UP),taxableGross.setScale(2,RoundingMode.HALF_UP),year,municipality,table,column,tax.setScale(2),net.setScale(2),BigDecimal.valueOf(regularTaxInt).setScale(2),oneTimeTax.setScale(2),taxFree.setScale(2),projected.setScale(2),lines);
   }
 
@@ -119,8 +124,8 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
   private record UtcRange(Instant start, Instant end) {}
 
   private UtcRange monthRangeUTC(int year, int month) {
-    var start = LocalDate.of(year, month, 1).atStartOfDay(ZoneOffset.UTC).toInstant();
-    var end = LocalDate.of(year, month, 1).plusMonths(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+    var start = LocalDate.of(year, month, 1).atStartOfDay(STOCKHOLM).toInstant();
+    var end = LocalDate.of(year, month, 1).plusMonths(1).atStartOfDay(STOCKHOLM).toInstant();
     return new UtcRange(start, end);
   }
 
@@ -131,36 +136,9 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     return BigDecimal.valueOf(ms).divide(BigDecimal.valueOf(3600000), 6, RoundingMode.HALF_UP);
   }
 
-  /**
-   * Compute gross pay for a shift, applying day-of-week multipliers:
-   * - Saturday: 1.5x
-   * - Sunday: 2.0x
-   * Splits a shift across UTC midnights to apply correct multipliers per calendar day.
-   */
   private BigDecimal shiftGross(Instant start, Instant end, BigDecimal hourlyCost) {
     if (start == null || end == null) return BigDecimal.ZERO;
     if (!end.isAfter(start)) return BigDecimal.ZERO;
-
-    BigDecimal gross = BigDecimal.ZERO;
-    Instant cursor = start;
-    while (cursor.isBefore(end)) {
-      ZonedDateTime z = cursor.atZone(ZoneOffset.UTC);
-      Instant nextMidnight = z.toLocalDate().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-      Instant segmentEnd = end.isBefore(nextMidnight) ? end : nextMidnight;
-
-      long ms = Duration.between(cursor, segmentEnd).toMillis();
-      BigDecimal hours = BigDecimal.valueOf(ms).divide(BigDecimal.valueOf(3600000), 6, RoundingMode.HALF_UP);
-
-      DayOfWeek dow = z.getDayOfWeek();
-      BigDecimal multiplier = BigDecimal.ONE;
-      if (dow == DayOfWeek.SATURDAY) multiplier = BigDecimal.valueOf(1.5);
-      else if (dow == DayOfWeek.SUNDAY) multiplier = BigDecimal.valueOf(2.0);
-
-      gross = gross.add(hourlyCost.multiply(hours).multiply(multiplier));
-
-      cursor = segmentEnd;
-    }
-
-    return gross;
+    return hourlyCost.multiply(hoursBetween(start, end));
   }
 }

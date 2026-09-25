@@ -55,7 +55,7 @@ class AppSettingsControllerSecurityTest {
                 .content("""
                     {"enabled":true,"host":"smtp.example.com","port":587}
                     """))
-            .andExpect(status().isNotFound());
+            .andExpect(status().isMethodNotAllowed());
     }
     @Test
     @WithMockUser(roles = "ADMIN")

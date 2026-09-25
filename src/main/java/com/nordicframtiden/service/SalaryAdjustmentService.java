@@ -1,5 +1,6 @@
 package com.nordicframtiden.service;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,8 +18,26 @@ public class SalaryAdjustmentService {
     repository.deleteByUserIdAndYearAndMonth(userId,year,month);
     return repository.saveAll(inputs.stream().map(i->{
       if(i.name()==null||i.name().isBlank()||i.amount()==null||i.amount().signum()<0||i.taxTreatment()==null) throw new IllegalArgumentException("Invalid salary adjustment");
-      var a=new SalaryAdjustment(); a.setUserId(userId);a.setYear(year);a.setMonth(month);a.setName(i.name().trim());a.setAmount(i.amount().setScale(2));a.setTaxTreatment(i.taxTreatment());return a;
+      if(i.taxTreatment()==SalaryAdjustment.TaxTreatment.TAX_FREE && (i.reimbursementType()==null || !i.taxFreeEligibilityConfirmed())) throw new IllegalArgumentException("Tax-free reimbursement type and eligibility confirmation are required");
+      if(i.taxTreatment()==SalaryAdjustment.TaxTreatment.TAX_FREE && i.reimbursementType()!=SalaryAdjustment.ReimbursementType.DOCUMENTED_EXPENSE && (i.quantity()==null || i.quantity().signum()<=0)) throw new IllegalArgumentException("A positive reimbursement quantity is required");
+      if(i.reimbursementType()==SalaryAdjustment.ReimbursementType.DOCUMENTED_EXPENSE && (i.receiptReference()==null || i.receiptReference().isBlank())) throw new IllegalArgumentException("Receipt reference is required for a documented expense");
+      var a=new SalaryAdjustment(); a.setUserId(userId);a.setYear(year);a.setMonth(month);a.setName(i.name().trim());a.setAmount(i.amount().setScale(2,RoundingMode.HALF_UP));a.setTaxTreatment(i.taxTreatment());a.setReimbursementType(i.reimbursementType());a.setQuantity(i.quantity());a.setReceiptReference(i.receiptReference()==null?null:i.receiptReference().trim());a.setTaxFreeEligibilityConfirmed(i.taxFreeEligibilityConfirmed());return a;
     }).toList());
   }
-  public record AdjustmentInput(String name,BigDecimal amount,SalaryAdjustment.TaxTreatment taxTreatment){}
+  public BigDecimal taxFreePortion(SalaryAdjustment adjustment) {
+    if (adjustment.getTaxTreatment()!=SalaryAdjustment.TaxTreatment.TAX_FREE || !adjustment.isTaxFreeEligibilityConfirmed() || adjustment.getReimbursementType()==null) return BigDecimal.ZERO;
+    if (adjustment.getReimbursementType()==SalaryAdjustment.ReimbursementType.DOCUMENTED_EXPENSE) return adjustment.getAmount();
+    BigDecimal rate = switch (adjustment.getReimbursementType()) {
+      case MILEAGE_OWN_CAR -> new BigDecimal("25.00");
+      case MILEAGE_COMPANY_ELECTRIC -> new BigDecimal("9.50");
+      case MILEAGE_COMPANY_OTHER -> new BigDecimal("12.00");
+      case DOMESTIC_TRAVEL_FULL_DAY -> new BigDecimal("300.00");
+      case DOMESTIC_TRAVEL_HALF_DAY, DOMESTIC_TRAVEL_NIGHT -> new BigDecimal("150.00");
+      case DOCUMENTED_EXPENSE -> BigDecimal.ZERO;
+    };
+    return adjustment.getAmount().min(adjustment.getQuantity().multiply(rate)).setScale(2,RoundingMode.HALF_UP);
+  }
+  public record AdjustmentInput(String name,BigDecimal amount,SalaryAdjustment.TaxTreatment taxTreatment,
+      SalaryAdjustment.ReimbursementType reimbursementType,BigDecimal quantity,String receiptReference,
+      boolean taxFreeEligibilityConfirmed){}
 }
