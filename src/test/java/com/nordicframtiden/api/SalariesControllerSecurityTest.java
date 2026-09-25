@@ -8,6 +8,7 @@ import com.nordicframtiden.security.model.UserProfile;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;
+import com.nordicframtiden.service.SalaryAdjustmentService;
 import com.nordicframtiden.service.model.NetSalaryResponse;
 import com.nordicframtiden.settings.EmailService;
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,7 @@ class SalariesControllerSecurityTest {
     @MockitoBean UserProfileRepository profileRepo;
     @MockitoBean AppUserRepository userRepo;
     @MockitoBean PayrollService payrollService;
+    @MockitoBean SalaryAdjustmentService adjustmentService;
     @MockitoBean EmailService emailService;
     @MockitoBean JwtService jwtService;
 

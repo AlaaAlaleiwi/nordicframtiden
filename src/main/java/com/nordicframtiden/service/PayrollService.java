@@ -24,15 +24,20 @@ public class PayrollService {
 
   private final ScheduleService scheduleService;      // your existing
   private final StaffScheduleService staffScheduleService; // your existing
+  private final SalaryAdjustmentService adjustmentService;
+  private final OneTimeTaxService oneTimeTaxService;
 
     
 
   public PayrollService(UserService userService, TaxService taxService, ScheduleService scheduleService,
-        StaffScheduleService staffScheduleService) {
+        StaffScheduleService staffScheduleService, SalaryAdjustmentService adjustmentService,
+        OneTimeTaxService oneTimeTaxService) {
     this.userService = userService;
     this.taxService = taxService;
     this.scheduleService = scheduleService;
     this.staffScheduleService = staffScheduleService;
+    this.adjustmentService = adjustmentService;
+    this.oneTimeTaxService = oneTimeTaxService;
 }
 public NetSalaryResponse netSalaryForUserMonth(Long userId, int year, int month, String role) {
   if ("STAFF".equalsIgnoreCase(role)) {
@@ -62,25 +67,7 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
   int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
   int tableNumber = taxService.resolveTableNumber(profile.getMunicipalityCode(), taxYear);
 
-  int grossInt = gross.setScale(0, RoundingMode.HALF_UP).intValue();
-  int taxInt = taxService.lookupPreliminaryTax(taxYear, tableNumber, taxColumn, grossInt);
-
-  BigDecimal tax = BigDecimal.valueOf(taxInt);
-  BigDecimal net = gross.subtract(tax);
-
-  return new NetSalaryResponse(
-      userId,
-      String.format("%04d-%02d", year, month),
-      profile.getHourlyCost(),
-      totalHours.setScale(2, RoundingMode.HALF_UP),
-      gross.setScale(2, RoundingMode.HALF_UP),
-      taxYear,
-      profile.getMunicipalityCode(),
-      tableNumber,
-      taxColumn,
-      tax.setScale(2, RoundingMode.HALF_UP),
-      net.setScale(2, RoundingMode.HALF_UP)
-  );
+  return calculate(userId,year,month,profile.getHourlyCost(),totalHours,gross,taxColumn,tableNumber,profile.getMunicipalityCode());
 }
   public NetSalaryResponse netSalaryForUserMonth(Long userId, int year, int month) {
 
@@ -107,26 +94,27 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
     int tableNumber = taxService.resolveTableNumber(profile.getMunicipalityCode(), taxYear);
 
-    int grossInt = gross.setScale(0, RoundingMode.HALF_UP).intValue(); // match Skatteverket granularity
-    int taxInt = taxService.lookupPreliminaryTax(taxYear, tableNumber, taxColumn, grossInt);
-
-    BigDecimal tax = BigDecimal.valueOf(taxInt);
-    BigDecimal net = gross.subtract(tax);
-
-    return new NetSalaryResponse(
-        userId,
-        String.format("%04d-%02d", year, month),
-        profile.getHourlyCost(),
-        totalHours.setScale(2, RoundingMode.HALF_UP),
-        gross.setScale(2, RoundingMode.HALF_UP),
-        taxYear,
-        profile.getMunicipalityCode(),
-        tableNumber,
-        taxColumn,
-        tax.setScale(2, RoundingMode.HALF_UP),
-        net.setScale(2, RoundingMode.HALF_UP)
-    );
+    return calculate(userId,year,month,profile.getHourlyCost(),totalHours,gross,taxColumn,tableNumber,profile.getMunicipalityCode());
   }
+
+  private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,BigDecimal hours,BigDecimal baseGross,int column,int table,String municipality){
+    var items=adjustmentService.forMonth(userId,year,month);
+    BigDecimal regular=items.stream().filter(a->a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.REGULAR_TAXABLE).map(a->a.getAmount()).reduce(BigDecimal.ZERO,BigDecimal::add);
+    BigDecimal oneTime=items.stream().filter(a->a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE).map(a->a.getAmount()).reduce(BigDecimal.ZERO,BigDecimal::add);
+    BigDecimal taxFree=items.stream().filter(a->a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.TAX_FREE).map(a->a.getAmount()).reduce(BigDecimal.ZERO,BigDecimal::add);
+    BigDecimal monthlyTaxable=baseGross.add(regular);
+    int regularTaxInt=taxService.lookupPreliminaryTax(year,table,column,monthlyTaxable.setScale(0,RoundingMode.HALF_UP).intValue());
+    BigDecimal projected=monthlyTaxable.multiply(BigDecimal.valueOf(12)).add(adjustmentService.annualOneTimeTotal(userId,year));
+    int rate = oneTime.signum() == 0 ? 0 : oneTimeTaxService.rateFor(
+        year, column, projected.setScale(0,RoundingMode.HALF_UP).intValue());
+    BigDecimal oneTimeTax=oneTime.multiply(BigDecimal.valueOf(rate)).divide(BigDecimal.valueOf(100),0,RoundingMode.HALF_UP);
+    BigDecimal tax=BigDecimal.valueOf(regularTaxInt).add(oneTimeTax);
+    BigDecimal taxableGross=monthlyTaxable.add(oneTime);
+    BigDecimal net=taxableGross.subtract(tax).add(taxFree);
+    var lines=items.stream().map(a->new NetSalaryResponse.AdjustmentLine(a.getId(),a.getName(),a.getAmount(),a.getTaxTreatment())).toList();
+    return new NetSalaryResponse(userId,String.format("%04d-%02d",year,month),hourlyCost,hours.setScale(2,RoundingMode.HALF_UP),taxableGross.setScale(2,RoundingMode.HALF_UP),year,municipality,table,column,tax.setScale(2),net.setScale(2),BigDecimal.valueOf(regularTaxInt).setScale(2),oneTimeTax.setScale(2),taxFree.setScale(2),projected.setScale(2),lines);
+  }
+
 
   private record UtcRange(Instant start, Instant end) {}
 

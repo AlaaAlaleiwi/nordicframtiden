@@ -7,6 +7,7 @@ import com.nordicframtiden.pharmacy.ScheduleShiftRepository;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;
+import com.nordicframtiden.service.SalaryAdjustmentService;
 import com.nordicframtiden.service.model.NetSalaryResponse;
 import com.nordicframtiden.settings.EmailService;
 import org.springframework.http.HttpStatus;
@@ -35,6 +36,7 @@ public class SalariesController {
   private final AppUserRepository userRepo;
   private final PayrollService payrollService;
   private final EmailService emailService;
+  private final SalaryAdjustmentService adjustmentService;
 
   public SalariesController(
       ScheduleShiftRepository shiftRepo,
@@ -42,7 +44,7 @@ public class SalariesController {
       UserProfileRepository profileRepo,
       AppUserRepository userRepo,
       PayrollService payrollService,
-      EmailService emailService
+      EmailService emailService, SalaryAdjustmentService adjustmentService
   ) {
     this.shiftRepo = shiftRepo;
     this.staffShiftRepo = staffShiftRepo;
@@ -50,6 +52,7 @@ public class SalariesController {
     this.userRepo = userRepo;
     this.payrollService = payrollService;
     this.emailService = emailService;
+    this.adjustmentService = adjustmentService;
   }
 
   /* ===================== DTOs ===================== */
@@ -84,6 +87,14 @@ public class SalariesController {
   ) {}
 
   public record YearRow(int year) {}
+  public record AdjustmentRequest(List<SalaryAdjustmentService.AdjustmentInput> adjustments) {}
+
+  @PutMapping("/payslip/adjustments")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
+  public NetSalaryResponse saveAdjustments(@RequestParam Long userId,@RequestParam int year,@RequestParam int month,@RequestParam(defaultValue="USER") String role,@RequestBody AdjustmentRequest request){
+    adjustmentService.replace(userId,year,month,request.adjustments()==null?List.of():request.adjustments());
+    return payrollService.netSalaryForUserMonth(userId,year,month,role);
+  }
   public record MonthRow(int year, int month, double totalHours, BigDecimal totalCost) {}
   public record DayRow(String dayKey, OffsetDateTime from, OffsetDateTime to, double totalHours, BigDecimal totalCost) {}
 // ===== Payslip DTO (what frontend expects) =====

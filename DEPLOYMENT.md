@@ -26,6 +26,11 @@ Optional mail secret:
 
 - `mail-password`
 
+Optional Skatteverket FOSIK secrets (required when the integration is enabled):
+
+- `skatteverket-tax-client-id`
+- `skatteverket-tax-client-secret`
+
 The Cloud Run runtime service account needs `Secret Manager Secret Accessor` for these secrets. If PostgreSQL or Redis has a private address, also configure Direct VPC egress for the service.
 
 ## Deploy
@@ -71,6 +76,43 @@ CALL_TURN_CREDENTIAL=<turn-password>
 ```
 
 Store `CALL_TURN_CREDENTIAL` in Secret Manager in production.
+
+## Skatteverket tax calculation
+
+The backend can calculate monthly preliminary tax through Skatteverket's FOSIK API instead
+of requiring every annual salary interval to be imported. It is disabled by default, so the
+existing `tax_table_row` data remains the fallback until API access has been approved.
+
+Configure the sandbox first:
+
+```text
+SKATTEVERKET_TAX_ENABLED=true
+SKATTEVERKET_TAX_BASE_URL=https://api.test.skatteverket.se/inkomstbeskattning/fraga-om-skatteavdrag-i-kronor/v1
+SKATTEVERKET_TAX_CLIENT_ID=<secret>
+SKATTEVERKET_TAX_CLIENT_SECRET=<secret>
+```
+
+For production, omit `SKATTEVERKET_TAX_BASE_URL` to use the production default. Store both
+credentials in Secret Manager and expose them to Cloud Run as environment variables. Never
+put these credentials in an iOS or web client. Municipality-to-table mappings remain local
+and versioned by tax year.
+
+### Automatic public tax-table import
+
+No API credentials are required for the public tax-table importer. It runs after
+application startup and daily at 03:15 Europe/Stockholm time. During December it
+also checks for the following year's tables. Both the monthly tables and all six
+columns of the annual `engångstabell` are downloaded and validated independently
+before the existing rows for that year are replaced transactionally.
+
+Optional environment variables:
+
+```text
+SKATTEVERKET_TAX_TABLE_IMPORT_ENABLED=true
+SKATTEVERKET_TAX_TABLE_IMPORT_CRON=0 15 3 * * *
+SKATTEVERKET_TAX_TABLE_IMPORT_TIMEOUT_SECONDS=30
+```
+
 # Firebase chat notifications
 
 Chat push notifications are optional and disabled by default. The frontend reads the

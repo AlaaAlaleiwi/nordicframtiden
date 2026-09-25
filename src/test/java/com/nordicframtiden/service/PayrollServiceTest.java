@@ -27,8 +27,10 @@ class PayrollServiceTest {
     TaxService taxService = mock(TaxService.class);
     ScheduleService scheduleService = mock(ScheduleService.class);
     StaffScheduleService staffScheduleService = mock(StaffScheduleService.class);
+    SalaryAdjustmentService adjustmentService = mock(SalaryAdjustmentService.class);
+    OneTimeTaxService oneTimeTaxService = mock(OneTimeTaxService.class);
     PayrollService payrollService = new PayrollService(
-        userService, taxService, scheduleService, staffScheduleService);
+        userService, taxService, scheduleService, staffScheduleService, adjustmentService, oneTimeTaxService);
 
     UserProfile profile = new UserProfile();
     profile.setHourlyCost(BigDecimal.valueOf(200));
@@ -41,6 +43,8 @@ class PayrollServiceTest {
     pharmacistShift.setEndAt(OffsetDateTime.parse("2026-08-03T16:00:00Z"));
     when(scheduleService.listForUser(eq(7L), any(), any()))
         .thenReturn(List.of(pharmacistShift));
+    when(adjustmentService.forMonth(7L, 2026, 8)).thenReturn(List.of());
+    when(adjustmentService.annualOneTimeTotal(7L, 2026)).thenReturn(BigDecimal.ZERO);
 
     when(taxService.resolveTaxColumn(1990, 2026)).thenReturn(1);
     when(taxService.resolveTableNumber("0180", 2026)).thenReturn(30);

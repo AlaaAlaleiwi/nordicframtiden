@@ -40,6 +40,9 @@ public class TaxTableRow {
   @Column(name = "col_6", nullable = false)
   private Integer col6;
 
+  @Column(name = "percentage", nullable = false)
+  private Boolean percentage = false;
+
   public Long getId() {
     return id;
   }
@@ -126,6 +129,14 @@ public class TaxTableRow {
 
   public void setCol6(Integer col6) {
     this.col6 = col6;
+  }
+
+  public Boolean getPercentage() {
+    return percentage;
+  }
+
+  public void setPercentage(Boolean percentage) {
+    this.percentage = percentage;
   }
 
 }

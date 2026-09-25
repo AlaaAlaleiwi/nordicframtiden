@@ -18,6 +18,19 @@ app:
     messaging-sender-id: ${APP_FIREBASE_MESSAGING_SENDER_ID:}
     app-id: ${APP_FIREBASE_APP_ID:}
     vapid-public-key: ${APP_FIREBASE_VAPID_PUBLIC_KEY:}
+  skatteverket:
+    tax-table-import:
+      enabled: ${SKATTEVERKET_TAX_TABLE_IMPORT_ENABLED:true}
+      index-url: ${SKATTEVERKET_TAX_TABLE_INDEX_URL:https://www.skatteverket.se/specialversionerforprogramforetagmfl.4.319dc1451507f2f99e86ee.html}
+      one-time-url: ${SKATTEVERKET_ONE_TIME_TAX_URL:https://www.skatteverket.se/privat/skatter/arbeteochinkomst/askattsedelochskattetabeller/engangsbelopp.4.70ac421612e2a997f85800014872.html}
+      cron: ${SKATTEVERKET_TAX_TABLE_IMPORT_CRON:0 15 3 * * *}
+      timeout-seconds: ${SKATTEVERKET_TAX_TABLE_IMPORT_TIMEOUT_SECONDS:30}
+    tax:
+      enabled: ${SKATTEVERKET_TAX_ENABLED:false}
+      base-url: ${SKATTEVERKET_TAX_BASE_URL:https://api.skatteverket.se/inkomstbeskattning/fraga-om-skatteavdrag-i-kronor/v1}
+      client-id: ${SKATTEVERKET_TAX_CLIENT_ID:}
+      client-secret: ${SKATTEVERKET_TAX_CLIENT_SECRET:}
+      timeout-seconds: ${SKATTEVERKET_TAX_TIMEOUT_SECONDS:10}
 
 calls:
   ice:
