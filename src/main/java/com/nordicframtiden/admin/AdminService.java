@@ -146,6 +146,90 @@ public class AdminService {
     }
 
     /* =========================
+       UPDATE (partial — nulls are ignored)
+       ========================= */
+    @Transactional
+    public AdminRow updateAdminWithProfile(
+            Long id,
+            String username,
+            String fullName,
+            String email,
+            String phone,
+            Boolean enabled) {
+
+        AppUser user = repo.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (user.getRoles() == null || !user.getRoles().contains(Role.ADMIN)) {
+            throw new IllegalArgumentException("User is not an admin");
+        }
+
+        if (username != null && !username.isBlank()
+                && !username.equalsIgnoreCase(user.getUsername())) {
+            if (repo.existsByUsername(username)) {
+                throw new IllegalArgumentException("Username already exists");
+            }
+            user.setUsername(username.trim());
+        }
+
+        if (enabled != null) user.setEnabled(enabled);
+        repo.save(user);
+
+        AdminProfile profile = adminProfileRepo.findByUserId(id)
+                .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+
+        if (fullName != null && !fullName.isBlank()) profile.setFullName(fullName.trim());
+
+        if (email != null && !email.isBlank() && !email.equalsIgnoreCase(profile.getEmail())) {
+            if (adminProfileRepo.existsByEmail(email)) {
+                throw new IllegalArgumentException("Email already exists");
+            }
+            profile.setEmail(email.trim());
+        }
+
+        if (phone != null && !phone.isBlank() && !phone.equals(profile.getPhone())) {
+            if (adminProfileRepo.existsByPhone(phone)) {
+                throw new IllegalArgumentException("Phone already exists");
+            }
+            profile.setPhone(phone.trim());
+        }
+
+        adminProfileRepo.save(profile);
+
+        return new AdminRow(
+                user.getId(),
+                user.getUsername(),
+                user.isEnabled(),
+                profile.getFullName(),
+                profile.getEmail(),
+                profile.getPhone(),
+                null);
+    }
+
+    /* =========================
+       RESEND INVITE (temporary password by email)
+       ========================= */
+    @Transactional
+    public void resendAdminInvite(Long id) {
+        AppUser user = repo.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (user.getRoles() == null || !user.getRoles().contains(Role.ADMIN)) {
+            throw new IllegalArgumentException("User is not an admin");
+        }
+
+        AdminProfile profile = adminProfileRepo.findByUserId(id)
+                .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+        if (profile.getEmail() == null || profile.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Admin has no email address");
+        }
+
+        String rawPassword = generatePassword();
+        user.setPasswordHash(encoder.encode(rawPassword));
+        repo.save(user);
+
+        emailService.sendPasswordResetEmail(profile.getEmail(), user.getUsername(), rawPassword);
+    }
+
+    /* =========================
        HELPERS
        ========================= */
     private String generateUniqueUsername(String fullName) {

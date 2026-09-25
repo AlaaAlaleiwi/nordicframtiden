@@ -127,6 +127,35 @@ public class AdminManagementController {
                 created.password()
         );
     }
+
+    @PutMapping("/{id}")
+    public AdminResponse update(@PathVariable Long id, @RequestBody UpdateAdminRequest req) {
+        var updated = adminService.updateAdminWithProfile(
+                id,
+                req.username(),
+                req.fullName(),
+                req.email(),
+                req.phone(),
+                req.enabled()
+        );
+
+        return new AdminResponse(
+                updated.id(),
+                updated.username(),
+                updated.enabled(),
+                updated.fullName(),
+                updated.email(),
+                updated.phone(),
+                null
+        );
+    }
+
+    @PostMapping("/{id}/invite")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resendInvite(@PathVariable Long id,
+                             @RequestBody(required = false) UpdateAdminRequest ignored) {
+        adminService.resendAdminInvite(id);
+    }
     @GetMapping("/stats")
   public AdminStats stats() {
     return new AdminStats(
