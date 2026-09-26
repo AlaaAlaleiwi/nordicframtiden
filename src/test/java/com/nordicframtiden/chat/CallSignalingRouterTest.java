@@ -20,6 +20,38 @@ class CallSignalingRouterTest {
   private final CallSignalingRouter router = new CallSignalingRouter(mapper, members, history, pushNotifications, users);
 
   @Test
+  void callStatesExposeVideoAndClearOnLeave() throws Exception {
+    when(members.findUsernamesByRoomId(10L)).thenReturn(List.of("alice", "bob"));
+    String callId = "be5194fd-af5d-46c9-b246-5c968f40b946";
+
+    router.route("alice", mapper.readTree(
+        "{\"type\":\"call.invite\",\"callId\":\"" + callId + "\",\"roomId\":10,\"isChannel\":true,\"isVideo\":true}"));
+
+    var states = router.activeCallStates("bob");
+    assertThat(states).containsEntry("alice", new CallSignalingRouter.UserCallState(true, false));
+    assertThat(states).doesNotContainKey("bob");
+
+    router.route("alice", mapper.readTree(
+        "{\"type\":\"call.leave\",\"callId\":\"" + callId + "\",\"roomId\":10}"));
+
+    assertThat(router.activeCallStates("bob")).isEmpty();
+  }
+
+  @Test
+  void callStatesAreHiddenFromUsersOutsideTheRoom() throws Exception {
+    when(members.findUsernamesByRoomId(10L)).thenReturn(List.of("alice", "bob"));
+    when(members.findUsernamesByRoomId(99L)).thenReturn(List.of("mallory"));
+    String callId = "be5194fd-af5d-46c9-b246-5c968f40b946";
+
+    router.route("alice", mapper.readTree(
+        "{\"type\":\"call.invite\",\"callId\":\"" + callId + "\",\"roomId\":10,\"isChannel\":true}"));
+
+    assertThat(router.activeCallStates("mallory")).isEmpty();
+    assertThat(router.activeCallStates("bob"))
+        .containsEntry("alice", new CallSignalingRouter.UserCallState(false, false));
+  }
+
+  @Test
   void routesInviteOnlyToOtherRoomMembers() throws Exception {
     when(members.findUsernamesByRoomId(10L)).thenReturn(List.of("alice", "bob", "carol"));
 

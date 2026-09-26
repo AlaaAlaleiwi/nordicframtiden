@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
 import java.util.UUID;
 import java.util.List;
 
@@ -26,6 +27,12 @@ class CallSignalController {
   @GetMapping("/active-channels")
   List<CallSignalingRouter.ActiveChannelCall> activeChannels(Authentication authentication) {
     return sockets.activeChannelCalls(authentication.getName());
+  }
+
+  /** Who is currently in a call (and whether audio/video) among the caller's rooms. */
+  @GetMapping("/call-states")
+  Map<String, CallSignalingRouter.UserCallState> callStates(Authentication authentication) {
+    return sockets.activeCallStates(authentication.getName());
   }
 
   @PostMapping("/{callId}/join")

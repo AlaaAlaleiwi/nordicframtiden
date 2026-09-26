@@ -23,6 +23,8 @@ class CallSignalingRouter {
   private final ChatPushNotificationService pushNotifications;
   private final AppUserRepository users;
   private final Map<UUID, ActiveCall> calls = new ConcurrentHashMap<>();
+  /** Username -> whether that user's current call uses video. */
+  private final Map<String, Boolean> userVideo = new ConcurrentHashMap<>();
 
   synchronized List<ActiveChannelCall> activeChannelCalls(String username) {
     return calls.entrySet().stream()
@@ -31,8 +33,27 @@ class CallSignalingRouter {
         .filter(entry -> members.findUsernamesByRoomId(entry.getValue().roomId).contains(username))
         .map(entry -> new ActiveChannelCall(
             entry.getKey(), entry.getValue().roomId,
-            Set.copyOf(entry.getValue().participants)))
+            Set.copyOf(entry.getValue().participants), entry.getValue().video))
         .toList();
+  }
+
+  /**
+   * Call state of every user currently in a call that the given username may
+   * see (i.e. calls taking place in one of their rooms). Lets the app show
+   * who is in a call and whether it is audio or video.
+   */
+  public synchronized Map<String, UserCallState> activeCallStates(String username) {
+    Map<String, UserCallState> result = new java.util.HashMap<>();
+    for (var entry : calls.entrySet()) {
+      ActiveCall call = entry.getValue();
+      if (call.participants.isEmpty()) continue;
+      if (!members.findUsernamesByRoomId(call.roomId).contains(username)) continue;
+      for (String participant : call.participants) {
+        result.put(participant, new UserCallState(
+            userVideo.getOrDefault(participant, call.video), !call.isChannel));
+      }
+    }
+    return result;
   }
 
   CallSignalingRouter(ObjectMapper objectMapper, ChatRoomMemberRepository members,
@@ -83,13 +104,14 @@ class CallSignalingRouter {
       ActiveCall call = entry.getValue();
       if (!call.participants.remove(username)) continue;
 
-      Set<String> recipients = new LinkedHashSet<>(call.participants);
-      ObjectNode event = objectMapper.createObjectNode();
-      event.put("type", "call.leave");
-      event.put("callId", callId.toString());
-      event.put("roomId", call.roomId);
-      event.put("fromUsername", username);
-      routes.add(new Route(recipients, event));
+    Set<String> recipients = new LinkedHashSet<>(call.participants);
+    ObjectNode event = objectMapper.createObjectNode();
+    event.put("type", "call.leave");
+    event.put("callId", callId.toString());
+    event.put("roomId", call.roomId);
+    event.put("fromUsername", username);
+    routes.add(new Route(recipients, event));
+    userVideo.remove(username);
 
       if (call.participants.isEmpty() || (!call.isChannel && call.participants.size() <= 1)) {
         calls.remove(callId);
@@ -105,11 +127,13 @@ class CallSignalingRouter {
         callId, ignored -> new ActiveCall(
             roomId,
             message.path("isChannel").asBoolean(false),
+            message.path("isVideo").asBoolean(false),
             new LinkedHashSet<>(),
             new LinkedHashSet<>()));
     requireRoom(activeCall, roomId);
     activeCall.participants.add(username);
     boolean video = message.path("isVideo").asBoolean(false);
+    userVideo.put(username, video);
     history.started(callId, roomId, username, video);
     Set<String> recipients = new LinkedHashSet<>();
     String target = message.path("targetUsername").asText("").trim();
@@ -137,6 +161,7 @@ class CallSignalingRouter {
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     activeCall.participants.add(username);
     activeCall.invited.remove(username);
+    userVideo.put(username, activeCall.video);
     history.answered(callId);
     recipients.remove(username);
     return routeFor(username, recipients, message);
@@ -155,6 +180,7 @@ class CallSignalingRouter {
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     recipients.remove(username);
     activeCall.participants.remove(username);
+    userVideo.remove(username);
     if (activeCall.participants.isEmpty()
         || (!activeCall.isChannel && activeCall.participants.size() <= 1)) {
       recipients.addAll(roomMembers);
@@ -169,6 +195,7 @@ class CallSignalingRouter {
                         List<String> roomMembers, JsonNode message) {
     ActiveCall activeCall = requiredCall(callId, roomId);
     activeCall.invited.remove(username);
+    userVideo.remove(username);
     if (activeCall.participants.size() > 1) {
       Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
       recipients.remove(username);
@@ -199,6 +226,9 @@ class CallSignalingRouter {
   private Route broadcastToParticipants(String username, UUID callId, long roomId,
                                         JsonNode message) {
     ActiveCall activeCall = requiredParticipant(username, callId, roomId);
+    if ("call.video".equals(message.path("type").asText())) {
+      userVideo.put(username, message.path("videoOn").asBoolean(false));
+    }
     Set<String> recipients = new LinkedHashSet<>(activeCall.participants);
     recipients.remove(username);
     return routeFor(username, recipients, message);
@@ -234,7 +264,9 @@ class CallSignalingRouter {
   }
 
   record Route(Set<String> recipients, ObjectNode event) {}
-  record ActiveChannelCall(UUID callId, long roomId, Set<String> participants) {}
-  private record ActiveCall(long roomId, boolean isChannel, Set<String> participants,
+  record ActiveChannelCall(UUID callId, long roomId, Set<String> participants, boolean video) {}
+  /** Whether a user is in a call, and whether that call is video and/or direct. */
+  public record UserCallState(boolean video, boolean direct) {}
+  private record ActiveCall(long roomId, boolean isChannel, boolean video, Set<String> participants,
                             Set<String> invited) {}
 }
