@@ -160,11 +160,44 @@ public class ChatService {
     int safeLimit = Math.max(1, Math.min(limit, 100));
     if (parentId != null) {
       ChatMessage parent = message(parentId);
-      if (!parent.getRoom().getId().equals(roomId)) throw new IllegalArgumentException("Thread is not in room");
+ if (!parent.getRoom().getId().equals(roomId)) throw new IllegalArgumentException("Thread is not in room");
       return messages.findByParentIdOrderByIdAsc(parentId);
     }
     List<ChatMessage> result = messages.findByRoomIdAndParentIsNullOrderByIdDesc(roomId, PageRequest.of(0, safeLimit));
     return result.reversed();
+  }
+
+  /**
+   * Incremental fetch: only messages (top-level or in-thread) with id > afterId.
+   * Lets clients keep a local transcript cache and pull just the delta — a
+   * cache miss (afterId == null) falls back to the newest `limit` messages.
+   */
+  @Transactional(readOnly = true)
+  public List<ChatMessage> messagesAfter(Authentication auth, Long roomId, Long parentId, Long afterId, int limit) {
+    AppUser user = current(auth);
+    requireMember(roomId, user.getId());
+    int safeLimit = Math.max(1, Math.min(limit, 100));
+    if (parentId != null) {
+      ChatMessage parent = message(parentId);
+      if (!parent.getRoom().getId().equals(roomId)) throw new IllegalArgumentException("Thread is not in room");
+      return messages.findByParentIdOrderByIdAsc(parentId).stream()
+          .filter(m -> afterId == null || m.getId() > afterId)
+          .toList();
+    }
+    if (afterId != null) {
+      return messages.findByRoomIdAndParentIsNullAndIdAfterOrderByIdAsc(roomId, afterId, PageRequest.of(0, safeLimit));
+    }
+    List<ChatMessage> result = messages.findByRoomIdAndParentIsNullOrderByIdDesc(roomId, PageRequest.of(0, safeLimit));
+    return result.reversed();
+  }
+
+  /** Single message by id; only visible to members of its room. */
+  @Transactional(readOnly = true)
+  public ChatMessage messageForUser(Authentication auth, Long messageId) {
+    AppUser user = current(auth);
+    ChatMessage message = message(messageId);
+    if (!members.existsByRoomIdAndUserId(message.getRoom().getId(), user.getId())) throw new ChatAccessDeniedException();
+    return message;
   }
 
   @Transactional

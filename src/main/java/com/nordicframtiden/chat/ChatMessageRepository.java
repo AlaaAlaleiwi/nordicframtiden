@@ -8,6 +8,7 @@ import java.util.List;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
   List<ChatMessage> findByRoomIdAndParentIsNullOrderByIdDesc(Long roomId, Pageable pageable);
+  List<ChatMessage> findByRoomIdAndParentIsNullAndIdAfterOrderByIdAsc(Long roomId, Long afterId, Pageable pageable);
   List<ChatMessage> findByParentIdOrderByIdAsc(Long parentId);
 
   @Query("select count(m) from ChatMessage m where m.parent is null and m.room.id = :roomId and m.id > :afterId and m.sender.id <> :userId")

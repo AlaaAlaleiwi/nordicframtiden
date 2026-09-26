@@ -103,9 +103,19 @@ public class ChatController {
   @GetMapping("/rooms/{roomId}/messages")
   public List<MessageDto> messages(Authentication auth, @PathVariable Long roomId,
                                    @RequestParam(required=false) Long parentId,
+                                   @RequestParam(required=false) Long afterId,
                                    @RequestParam(defaultValue="50") int limit) {
     AppUser me = service.current(auth);
-    return service.messages(auth, roomId, parentId, limit).stream().map(message -> message(message, me)).toList();
+    List<ChatMessage> loaded = afterId == null
+        ? service.messages(auth, roomId, parentId, limit)
+        : service.messagesAfter(auth, roomId, parentId, afterId, limit);
+    return loaded.stream().map(message -> message(message, me)).toList();
+  }
+
+  @GetMapping("/messages/{messageId}")
+  public MessageDto messageById(Authentication auth, @PathVariable Long messageId) {
+    AppUser me = service.current(auth);
+    return message(service.messageForUser(auth, messageId), me);
   }
 
   @PostMapping("/rooms/{roomId}/messages") @ResponseStatus(HttpStatus.CREATED)
