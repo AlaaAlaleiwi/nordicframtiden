@@ -6,9 +6,13 @@ import com.nordicframtiden.security.repo.UserProfileRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -16,18 +20,23 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
+  private static final long MAX_UPLOAD_BYTES = 10L * 1024 * 1024; // 10 MB
+
   private final ChatService service;
   private final ChatRoomMemberRepository members;
   private final ChatMessageRepository messages;
   private final ChatReactionRepository reactions;
+  private final ChatAttachmentRepository attachments;
   private final AppUserRepository users;
   private final UserProfileRepository profiles;
   private final ChatPresence presence;
 
   public ChatController(ChatService service, ChatRoomMemberRepository members,
                         ChatMessageRepository messages, ChatReactionRepository reactions,
+                        ChatAttachmentRepository attachments,
                         AppUserRepository users, UserProfileRepository profiles, ChatPresence presence) {
     this.service = service; this.members = members; this.messages = messages; this.reactions = reactions;
+    this.attachments = attachments;
     this.users = users; this.profiles = profiles; this.presence = presence;
   }
 
@@ -37,15 +46,16 @@ public class ChatController {
                         long unreadCount, List<ParticipantDto> participants,
                         List<Long> adminUserIds) {}
   public record ReactionDto(String emoji, long count, boolean mine) {}
+  public record AttachmentDto(Long id, String fileName, String contentType, long sizeBytes) {}
   public record MessageDto(Long id, Long roomId, Long parentId, ParticipantDto sender, String body,
                            Instant createdAt, Instant editedAt, boolean deleted, long replyCount,
-                           List<ReactionDto> reactions) {}
+                           List<ReactionDto> reactions, List<AttachmentDto> attachments) {}
   public record CreateChannelRequest(@NotBlank @Size(max=80) String name, @Size(max=500) String description,
                                      boolean privateChannel, List<Long> memberIds) {}
   public record AddChannelMembersRequest(@NotEmpty List<@NotNull Long> userIds) {}
   public record AddChannelAdminsRequest(@NotEmpty List<@NotNull Long> userIds) {}
   public record DirectRequest(@NotNull Long userId) {}
-  public record SendMessageRequest(Long parentId, @NotBlank @Size(max=4000) String body) {}
+  public record SendMessageRequest(Long parentId, @Size(max=4000) String body, List<Long> attachmentIds) {}
   public record EditMessageRequest(@NotBlank @Size(max=4000) String body) {}
   public record ReactionRequest(@NotBlank @Size(max=32) String emoji) {}
   public record ReadRequest(Long messageId) {}
@@ -121,7 +131,38 @@ public class ChatController {
   @PostMapping("/rooms/{roomId}/messages") @ResponseStatus(HttpStatus.CREATED)
   public MessageDto send(Authentication auth, @PathVariable Long roomId, @Valid @RequestBody SendMessageRequest request) {
     AppUser me = service.current(auth);
-    return message(service.send(auth, roomId, request.parentId(), request.body()), me);
+    return message(service.send(auth, roomId, request.parentId(), request.body(), request.attachmentIds()), me);
+  }
+
+  /** Uploads a file; returns its id to reference when sending the message. */
+  @PostMapping("/attachments") @ResponseStatus(HttpStatus.CREATED)
+  public AttachmentDto upload(Authentication auth,
+      @RequestParam("file") MultipartFile file) throws IOException {
+    AppUser me = service.current(auth);
+    if (file.isEmpty()) throw new IllegalArgumentException("File is empty");
+    if (file.getSize() > MAX_UPLOAD_BYTES) throw new IllegalArgumentException("File exceeds the 10 MB limit");
+    ChatAttachment attachment = new ChatAttachment();
+    attachment.setUploaderId(me.getId());
+    String name = file.getOriginalFilename();
+    attachment.setFileName(name == null || name.isBlank() ? "file" : name);
+    String type = file.getContentType();
+    attachment.setContentType(type == null || type.isBlank() ? "application/octet-stream" : type);
+    attachment.setSizeBytes(file.getSize());
+    attachment.setData(file.getBytes());
+    return attachmentDto(attachments.save(attachment));
+  }
+
+  /** Streams the attachment bytes; only members of the carrying message's room may download. */
+  @GetMapping("/attachments/{attachmentId}")
+  public ResponseEntity<byte[]> download(Authentication auth, @PathVariable Long attachmentId) {
+    ChatAttachment attachment = attachments.findById(attachmentId)
+        .orElseThrow(() -> new IllegalArgumentException("Attachment not found"));
+    if (attachment.getMessageId() == null) throw new IllegalArgumentException("Attachment not found");
+    service.messageForUser(auth, attachment.getMessageId());
+    return ResponseEntity.ok()
+        .header("Content-Disposition", "attachment; filename=\"" + attachment.getFileName().replace("\"", "") + "\"")
+        .contentType(MediaType.parseMediaType(attachment.getContentType()))
+        .body(attachment.getData());
   }
 
   @PutMapping("/messages/{messageId}")
@@ -169,10 +210,17 @@ public class ChatController {
     List<ReactionDto> reactionDtos = grouped.entrySet().stream()
         .map(entry -> new ReactionDto(entry.getKey(), entry.getValue().size(),
             entry.getValue().stream().anyMatch(reaction -> reaction.getUser().getId().equals(me.getId())))).toList();
+    List<AttachmentDto> attachmentDtos = attachments.findByMessageIdOrderById(message.getId()).stream()
+        .map(this::attachmentDto).toList();
     return new MessageDto(message.getId(), message.getRoom().getId(),
         message.getParent() == null ? null : message.getParent().getId(), participant(message.getSender()),
         message.getBody(), message.getCreatedAt(), message.getEditedAt(), message.getDeletedAt() != null,
-        messages.countByParentId(message.getId()), reactionDtos);
+        messages.countByParentId(message.getId()), reactionDtos, attachmentDtos);
+  }
+
+  private AttachmentDto attachmentDto(ChatAttachment attachment) {
+    return new AttachmentDto(attachment.getId(), attachment.getFileName(),
+        attachment.getContentType(), attachment.getSizeBytes());
   }
 
   private ParticipantDto participant(AppUser user) {

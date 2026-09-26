@@ -20,11 +20,12 @@ public class ChatService {
   private final AppUserRepository users;
   private final ChatEventPublisher events;
   private final ChatPushNotificationService notifications;
+  private final ChatAttachmentRepository attachments;
 
   public ChatService(ChatRoomRepository rooms, ChatRoomMemberRepository members,
                      ChatMessageRepository messages, ChatReactionRepository reactions,
                      AppUserRepository users, ChatEventPublisher events,
-                     ChatPushNotificationService notifications) {
+                     ChatPushNotificationService notifications, ChatAttachmentRepository attachments) {
     this.rooms = rooms;
     this.members = members;
     this.messages = messages;
@@ -32,6 +33,7 @@ public class ChatService {
     this.users = users;
     this.events = events;
     this.notifications = notifications;
+    this.attachments = attachments;
   }
 
   @Transactional(readOnly = true)
@@ -191,6 +193,12 @@ public class ChatService {
     return result.reversed();
   }
 
+  /** Attachments of a message, metadata only (no bytes). */
+  @Transactional(readOnly = true)
+  public List<ChatAttachment> attachmentsOf(Long messageId) {
+    return attachments.findByMessageIdOrderById(messageId);
+  }
+
   /** Single message by id; only visible to members of its room. */
   @Transactional(readOnly = true)
   public ChatMessage messageForUser(Authentication auth, Long messageId) {
@@ -200,8 +208,13 @@ public class ChatService {
     return message;
   }
 
+  /**
+   * Sends a message. A message must have text, attachments, or both. When
+   * attachment ids are supplied they must belong to the sender and still be
+   * unbound; they are bound to the new message atomically.
+   */
   @Transactional
-  public ChatMessage send(Authentication auth, Long roomId, Long parentId, String body) {
+  public ChatMessage send(Authentication auth, Long roomId, Long parentId, String body, List<Long> attachmentIds) {
     AppUser user = current(auth);
     ChatRoom room = room(roomId);
     requireMember(roomId, user.getId());
@@ -209,12 +222,28 @@ public class ChatService {
     if (parent != null && (!parent.getRoom().getId().equals(roomId) || parent.getParent() != null)) {
       throw new IllegalArgumentException("Invalid thread parent");
     }
+    String cleanBody = body == null ? "" : body.trim();
+    List<ChatAttachment> bound = java.util.Collections.emptyList();
+    if (attachmentIds != null && !attachmentIds.isEmpty()) {
+      bound = attachments.findByIdInAndMessageIdIsNullAndUploaderId(attachmentIds, user.getId());
+      if (bound.size() != attachmentIds.size()) {
+        throw new IllegalArgumentException("One or more attachments are missing or already used");
+      }
+    }
+    if (cleanBody.isEmpty() && bound.isEmpty()) {
+      throw new IllegalArgumentException("Message must contain text or an attachment");
+    }
+
     ChatMessage result = new ChatMessage();
     result.setRoom(room);
     result.setSender(user);
     result.setParent(parent);
-    result.setBody(requireText(body, 4000, "Message"));
+    result.setBody(cleanBody.isEmpty() ? "" : cleanBody);
     result = messages.save(result);
+    for (ChatAttachment attachment : bound) {
+      attachment.setMessageId(result.getId());
+      attachments.save(attachment);
+    }
     events.publish(roomId, "message.created", result.getId());
     notifications.notifyNewMessage(result);
     return result;

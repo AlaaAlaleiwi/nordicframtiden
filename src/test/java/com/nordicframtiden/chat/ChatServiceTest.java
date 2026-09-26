@@ -4,7 +4,10 @@ import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageRequest;
+import org.mockito.junit.jupiter.MockitoSettings;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import static org.mockito.Mockito.verify;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,17 +25,18 @@ class ChatServiceTest {
     ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
     ChatMessageRepository messages = mock(ChatMessageRepository.class);
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
+    ChatAttachmentRepository attachments = mock(ChatAttachmentRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
     ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications, attachments);
     AppUser user = user(7L, "anna");
 
     when(users.findByUsername("anna")).thenReturn(Optional.of(user));
     when(rooms.findById(12L)).thenReturn(Optional.of(new ChatRoom()));
     when(members.existsByRoomIdAndUserId(12L, 7L)).thenReturn(false);
 
-    assertThatThrownBy(() -> service.send(authentication("anna"), 12L, null, "Hello"))
+    assertThatThrownBy(() -> service.send(authentication("anna"), 12L, null, "Hello", null))
         .isInstanceOf(ChatAccessDeniedException.class);
   }
 
@@ -42,10 +46,11 @@ class ChatServiceTest {
     ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
     ChatMessageRepository messages = mock(ChatMessageRepository.class);
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
+    ChatAttachmentRepository attachments = mock(ChatAttachmentRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
     ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications, attachments);
     AppUser user = user(7L, "anna");
     ChatRoom room = new ChatRoom();
     room.setId(12L);
@@ -59,7 +64,7 @@ class ChatServiceTest {
       return saved;
     });
 
-    ChatMessage saved = service.send(authentication("anna"), 12L, null, "  Hello team  ");
+    ChatMessage saved = service.send(authentication("anna"), 12L, null, "  Hello team  ", null);
 
     assertThat(saved.getBody()).isEqualTo("Hello team");
     assertThat(saved.getSender()).isSameAs(user);
@@ -73,10 +78,11 @@ class ChatServiceTest {
     ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
     ChatMessageRepository messages = mock(ChatMessageRepository.class);
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
+    ChatAttachmentRepository attachments = mock(ChatAttachmentRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
     ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications, attachments);
     AppUser author = user(7L, "anna");
     AppUser other = user(8L, "erik");
     ChatMessage message = new ChatMessage();
@@ -91,15 +97,79 @@ class ChatServiceTest {
   }
 
   @Test
+  void sendBindsUploadersUnboundAttachmentsToTheMessage() {
+    ChatRoomRepository rooms = mock(ChatRoomRepository.class);
+    ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
+    ChatMessageRepository messages = mock(ChatMessageRepository.class);
+    ChatReactionRepository reactions = mock(ChatReactionRepository.class);
+    ChatAttachmentRepository attachments = mock(ChatAttachmentRepository.class);
+    AppUserRepository users = mock(AppUserRepository.class);
+    ChatEventPublisher events = mock(ChatEventPublisher.class);
+    ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications, attachments);
+    AppUser user = user(7L, "anna");
+    ChatRoom room = new ChatRoom();
+    room.setId(12L);
+    ChatAttachment pending = new ChatAttachment();
+    pending.setId(55L);
+    pending.setUploaderId(7L);
+
+    when(users.findByUsername("anna")).thenReturn(Optional.of(user));
+    when(rooms.findById(12L)).thenReturn(Optional.of(room));
+    when(members.existsByRoomIdAndUserId(12L, 7L)).thenReturn(true);
+    when(messages.save(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> {
+      ChatMessage saved = invocation.getArgument(0);
+      saved.setId(99L);
+      return saved;
+    });
+    when(attachments.findByIdInAndMessageIdIsNullAndUploaderId(List.of(55L), 7L))
+        .thenReturn(List.of(pending));
+
+    ChatMessage saved = service.send(authentication("anna"), 12L, null, "Photo", List.of(55L));
+
+    assertThat(saved.getId()).isEqualTo(99L);
+    assertThat(pending.getMessageId()).isEqualTo(99L);
+    verify(attachments).save(pending);
+    verify(notifications).notifyNewMessage(saved);
+  }
+
+  @Test
+  void sendRejectsAttachmentsBelongingToAnotherUser() {
+    ChatRoomRepository rooms = mock(ChatRoomRepository.class);
+    ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
+    ChatMessageRepository messages = mock(ChatMessageRepository.class);
+    ChatReactionRepository reactions = mock(ChatReactionRepository.class);
+    ChatAttachmentRepository attachments = mock(ChatAttachmentRepository.class);
+    AppUserRepository users = mock(AppUserRepository.class);
+    ChatEventPublisher events = mock(ChatEventPublisher.class);
+    ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications, attachments);
+
+    when(users.findByUsername("anna")).thenReturn(Optional.of(user(7L, "anna")));
+    when(rooms.findById(12L)).thenReturn(Optional.of(new ChatRoom()));
+    when(members.existsByRoomIdAndUserId(12L, 7L)).thenReturn(true);
+    // Only 1 of the 2 requested attachments resolves -> must be rejected.
+    ChatAttachment foreign = new ChatAttachment();
+    foreign.setId(56L);
+    foreign.setUploaderId(8L);
+    when(attachments.findByIdInAndMessageIdIsNullAndUploaderId(List.of(55L, 56L), 7L))
+        .thenReturn(List.of(foreign));
+
+    assertThatThrownBy(() -> service.send(authentication("anna"), 12L, null, "Photo", List.of(55L, 56L)))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
   void messagesAfterReturnsOnlyMessagesNewerThanCursor() {
     ChatRoomRepository rooms = mock(ChatRoomRepository.class);
     ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
     ChatMessageRepository messages = mock(ChatMessageRepository.class);
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
+    ChatAttachmentRepository attachments = mock(ChatAttachmentRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
     ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications, attachments);
     AppUser user = user(7L, "anna");
 
     when(users.findByUsername("anna")).thenReturn(Optional.of(user));
@@ -118,10 +188,11 @@ class ChatServiceTest {
     ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
     ChatMessageRepository messages = mock(ChatMessageRepository.class);
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
+    ChatAttachmentRepository attachments = mock(ChatAttachmentRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
     ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications, attachments);
 
     when(users.findByUsername("anna")).thenReturn(Optional.of(user(7L, "anna")));
     when(members.existsByRoomIdAndUserId(12L, 7L)).thenReturn(true);
@@ -138,10 +209,11 @@ class ChatServiceTest {
     ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
     ChatMessageRepository messages = mock(ChatMessageRepository.class);
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
+    ChatAttachmentRepository attachments = mock(ChatAttachmentRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
     ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications, attachments);
     ChatMessage message = message(99L);
     ChatRoom room = new ChatRoom();
     room.setId(12L);
@@ -160,10 +232,11 @@ class ChatServiceTest {
     ChatRoomMemberRepository members = mock(ChatRoomMemberRepository.class);
     ChatMessageRepository messages = mock(ChatMessageRepository.class);
     ChatReactionRepository reactions = mock(ChatReactionRepository.class);
+    ChatAttachmentRepository attachments = mock(ChatAttachmentRepository.class);
     AppUserRepository users = mock(AppUserRepository.class);
     ChatEventPublisher events = mock(ChatEventPublisher.class);
     ChatPushNotificationService notifications = mock(ChatPushNotificationService.class);
-    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications);
+    ChatService service = new ChatService(rooms, members, messages, reactions, users, events, notifications, attachments);
     ChatMessage message = message(99L);
     ChatRoom room = new ChatRoom();
     room.setId(12L);
