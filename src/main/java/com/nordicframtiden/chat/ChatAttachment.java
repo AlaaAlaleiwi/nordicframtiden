@@ -35,6 +35,10 @@ public class ChatAttachment {
   @Column(nullable = false)
   private byte[] data;
 
+  /** Set when the bytes have been wiped after delivery/retention expiry. */
+  @Column(name = "purged_at")
+  private Instant purgedAt;
+
   @Column(name = "created_at", nullable = false)
   private Instant createdAt = Instant.now();
 
@@ -53,5 +57,7 @@ public class ChatAttachment {
   public void setSizeBytes(Long sizeBytes) { this.sizeBytes = sizeBytes; }
   public byte[] getData() { return data; }
   public void setData(byte[] data) { this.data = data; }
+  public Instant getPurgedAt() { return purgedAt; }
+  public void setPurgedAt(Instant purgedAt) { this.purgedAt = purgedAt; }
   public Instant getCreatedAt() { return createdAt; }
 }

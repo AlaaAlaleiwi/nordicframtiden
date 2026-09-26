@@ -27,6 +27,8 @@ public class ChatController {
   private final ChatMessageRepository messages;
   private final ChatReactionRepository reactions;
   private final ChatAttachmentRepository attachments;
+  private final ChatAttachmentDeliveryRepository deliveries;
+  private final ChatAttachmentPurgeService purgeService;
   private final AppUserRepository users;
   private final UserProfileRepository profiles;
   private final ChatPresence presence;
@@ -34,9 +36,13 @@ public class ChatController {
   public ChatController(ChatService service, ChatRoomMemberRepository members,
                         ChatMessageRepository messages, ChatReactionRepository reactions,
                         ChatAttachmentRepository attachments,
+                        ChatAttachmentDeliveryRepository deliveries,
+                        ChatAttachmentPurgeService purgeService,
                         AppUserRepository users, UserProfileRepository profiles, ChatPresence presence) {
     this.service = service; this.members = members; this.messages = messages; this.reactions = reactions;
     this.attachments = attachments;
+    this.deliveries = deliveries;
+    this.purgeService = purgeService;
     this.users = users; this.profiles = profiles; this.presence = presence;
   }
 
@@ -159,10 +165,35 @@ public class ChatController {
         .orElseThrow(() -> new IllegalArgumentException("Attachment not found"));
     if (attachment.getMessageId() == null) throw new IllegalArgumentException("Attachment not found");
     service.messageForUser(auth, attachment.getMessageId());
+    AppUser me = service.current(auth);
+
+    // Capture the bytes BEFORE any purge — the requester must always get
+    // the payload they came for, even in a single-member room where this
+    // download itself completes the delivery set.
+    byte[] data = attachment.getData();
+    boolean purged = attachment.getPurgedAt() != null;
+    if (purged || data == null || data.length == 0) {
+      // Bytes already wiped: the receiving client has them cached (or the
+      // retention window passed). Metadata remains for display.
+      return ResponseEntity.status(HttpStatus.GONE)
+          .contentType(MediaType.APPLICATION_JSON)
+          .body("{\"error\":\"Attachment bytes no longer available\"}".getBytes());
+    }
+
+    // Record delivery for this member, then purge if everyone has received
+    // the attachment (this request included).
+    if (!deliveries.existsByAttachmentIdAndUserId(attachmentId, me.getId())) {
+      ChatAttachmentDelivery delivery = new ChatAttachmentDelivery();
+      delivery.setAttachmentId(attachmentId);
+      delivery.setUserId(me.getId());
+      deliveries.save(delivery);
+    }
+    purgeService.purgeIfFullyDelivered(attachmentId);
+
     return ResponseEntity.ok()
         .header("Content-Disposition", "attachment; filename=\"" + attachment.getFileName().replace("\"", "") + "\"")
         .contentType(MediaType.parseMediaType(attachment.getContentType()))
-        .body(attachment.getData());
+        .body(data);
   }
 
   @PutMapping("/messages/{messageId}")
