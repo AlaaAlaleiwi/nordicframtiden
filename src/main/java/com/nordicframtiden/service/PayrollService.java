@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.DayOfWeek;
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 
@@ -45,6 +46,52 @@ public NetSalaryResponse netSalaryForUserMonth(Long userId, int year, int month,
     return netSalaryForStaffMonth(userId, year, month);
   }
   return netSalaryForUserMonth(userId, year, month); // your existing USER one
+}
+
+/**
+ * Live preview of the payslip with unsaved overrides. Nothing is persisted:
+ * the hourly cost used for the shift pay can be overridden and the saved
+ * adjustments are replaced in-memory by the supplied ones. Used by the app
+ * so tax and net salary update in real time while an admin edits.
+ */
+public NetSalaryResponse previewForUserMonth(Long userId, int year, int month, String role,
+    BigDecimal hourlyCostOverride, List<SalaryAdjustmentService.AdjustmentInput> adjustmentOverrides) {
+  var user = userService.getDetailedById(userId);
+  var profile = userService.getProfileByUserId(userId);
+
+  if (profile.getHourlyCost() == null) {
+    throw new IllegalArgumentException("Hourly cost missing for user " + userId);
+  }
+  BigDecimal hourlyCost = profile.getHourlyCost();
+  if (hourlyCostOverride != null && hourlyCostOverride.signum() >= 0) {
+    hourlyCost = hourlyCostOverride.setScale(2, RoundingMode.HALF_UP);
+  }
+
+  int taxYear = year;
+  int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
+  int tableNumber = taxService.resolveTableNumber(profile.getMunicipalityCode(), taxYear);
+
+  var range = monthRangeUTC(year, month);
+  BigDecimal totalHours = BigDecimal.ZERO;
+  PayBreakdown pay = PayBreakdown.zero();
+  if ("STAFF".equalsIgnoreCase(role)) {
+    for (var s : staffScheduleService.listForUser(userId, range.start(), range.end())) {
+      Instant start = s.getStartAt().toInstant();
+      Instant end = s.getEndAt().toInstant();
+      totalHours = totalHours.add(hoursBetween(start, end));
+      pay = pay.add(shiftPay(start, end, hourlyCost));
+    }
+  } else {
+    for (var s : scheduleService.listForUser(userId, range.start(), range.end())) {
+      Instant start = s.getStartAt().toInstant();
+      Instant end = s.getEndAt().toInstant();
+      totalHours = totalHours.add(hoursBetween(start, end));
+      pay = pay.add(shiftPay(start, end, hourlyCost));
+    }
+  }
+
+  return calculate(userId, year, month, hourlyCost, totalHours, pay, taxColumn, tableNumber,
+      profile.getMunicipalityCode(), adjustmentOverrides);
 }
 
 public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month) {
@@ -99,8 +146,14 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
   }
 
   private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,BigDecimal hours,PayBreakdown pay,int column,int table,String municipality){
+    return calculate(userId,year,month,hourlyCost,hours,pay,column,table,municipality,null);
+  }
+
+  private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,BigDecimal hours,PayBreakdown pay,int column,int table,String municipality,List<SalaryAdjustmentService.AdjustmentInput> adjustmentOverrides){
     BigDecimal baseGross = pay.total();
-    var items=adjustmentService.forMonth(userId,year,month);
+    var items=adjustmentOverrides != null
+        ? adjustmentService.toEntities(adjustmentOverrides)
+        : adjustmentService.forMonth(userId,year,month);
     BigDecimal regular=items.stream().map(a -> {
       if(a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.REGULAR_TAXABLE) return a.getAmount();
       if(a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.TAX_FREE) return a.getAmount().subtract(adjustmentService.taxFreePortion(a));
@@ -110,7 +163,10 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     BigDecimal taxFree=items.stream().map(adjustmentService::taxFreePortion).reduce(BigDecimal.ZERO,BigDecimal::add);
     BigDecimal monthlyTaxable=baseGross.add(regular);
     int regularTaxInt=taxService.lookupPreliminaryTax(year,table,column,monthlyTaxable.setScale(0,RoundingMode.HALF_UP).intValue());
-    BigDecimal projected=monthlyTaxable.multiply(BigDecimal.valueOf(12)).add(adjustmentService.annualOneTimeTotal(userId,year));
+    BigDecimal annualOneTime=adjustmentOverrides == null
+        ? adjustmentService.annualOneTimeTotal(userId,year)
+        : adjustmentService.annualOneTimeTotalExcludingMonth(userId,year,month).add(oneTime);
+    BigDecimal projected=monthlyTaxable.multiply(BigDecimal.valueOf(12)).add(annualOneTime);
     int rate = oneTime.signum() == 0 ? 0
         : monthlyTaxable.signum() == 0 ? 30
         : oneTimeTaxService.rateFor(year, column,
@@ -161,4 +217,7 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     BigDecimal total(){return base.add(saturdayOb).add(sundayOb);}
     PayBreakdown add(PayBreakdown other){return new PayBreakdown(base.add(other.base),saturdayOb.add(other.saturdayOb),sundayOb.add(other.sundayOb));}
   }
+
+  /** Request body for the live payslip preview; every field is an optional override. */
+  public record PreviewRequest(BigDecimal hourlyCost, List<SalaryAdjustmentService.AdjustmentInput> adjustments) {}
 }

@@ -5,4 +5,5 @@ public interface SalaryAdjustmentRepository extends JpaRepository<SalaryAdjustme
   List<SalaryAdjustment> findByUserIdAndYearAndMonthOrderById(Long userId,int year,int month);
   List<SalaryAdjustment> findByUserIdAndYear(Long userId,int year);
   void deleteByUserIdAndYearAndMonth(Long userId,int year,int month);
+  List<SalaryAdjustment> findByUserIdAndYearAndMonthNot(Long userId,int year,int month);
 }

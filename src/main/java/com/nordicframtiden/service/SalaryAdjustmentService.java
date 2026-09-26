@@ -13,6 +13,17 @@ public class SalaryAdjustmentService {
   public SalaryAdjustmentService(SalaryAdjustmentRepository repository){this.repository=repository;}
   public List<SalaryAdjustment> forMonth(Long userId,int year,int month){return repository.findByUserIdAndYearAndMonthOrderById(userId,year,month);}
   public BigDecimal annualOneTimeTotal(Long userId,int year){return repository.findByUserIdAndYear(userId,year).stream().filter(a->a.getTaxTreatment()==SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE).map(SalaryAdjustment::getAmount).reduce(BigDecimal.ZERO,BigDecimal::add);}
+  /** Annual one-time total for the year excluding the given month (used by the live preview, which supplies that month's unsaved values itself). */
+  public BigDecimal annualOneTimeTotalExcludingMonth(Long userId,int year,int month){return repository.findByUserIdAndYearAndMonthNot(userId,year,month).stream().filter(a->a.getTaxTreatment()==SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE).map(SalaryAdjustment::getAmount).reduce(BigDecimal.ZERO,BigDecimal::add);}
+  /** Map unsaved input rows to detached entities for the preview calculation (no persistence). */
+  public List<SalaryAdjustment> toEntities(List<AdjustmentInput> inputs){
+    return inputs.stream().filter(i->i.name()!=null&&!i.name().isBlank()&&i.amount()!=null&&i.amount().signum()>=0&&i.taxTreatment()!=null).map(i->{
+      var a=new SalaryAdjustment();
+      a.setUserId(0L);a.setYear(0);a.setMonth(0);
+      a.setName(i.name().trim());a.setAmount(i.amount().setScale(2,RoundingMode.HALF_UP));a.setTaxTreatment(i.taxTreatment());a.setReimbursementType(i.reimbursementType());a.setQuantity(i.quantity());a.setReceiptReference(i.receiptReference()==null?null:i.receiptReference().trim());a.setTaxFreeEligibilityConfirmed(i.taxFreeEligibilityConfirmed());
+      return a;
+    }).toList();
+  }
   @Transactional public List<SalaryAdjustment> replace(Long userId,int year,int month,List<AdjustmentInput> inputs){
     if(month<1||month>12) throw new IllegalArgumentException("Invalid salary month");
     repository.deleteByUserIdAndYearAndMonth(userId,year,month);

@@ -95,6 +95,20 @@ public class SalariesController {
     adjustmentService.replace(userId,year,month,request.adjustments()==null?List.of():request.adjustments());
     return payrollService.netSalaryForUserMonth(userId,year,month,role);
   }
+  /** Live preview: computes the payslip with unsaved hourly cost / adjustment overrides. Nothing is persisted. */
+  @PostMapping("/payslip/preview")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
+  public NetSalaryResponse previewPayslip(
+      @RequestParam Long userId,
+      @RequestParam int year,
+      @RequestParam int month,
+      @RequestParam(defaultValue = "USER") String role,
+      @RequestBody(required = false) PayrollService.PreviewRequest request
+  ) {
+    PayrollService.PreviewRequest body =
+        request == null ? new PayrollService.PreviewRequest(null, null) : request;
+    return payrollService.previewForUserMonth(userId, year, month, role, body.hourlyCost(), body.adjustments());
+  }
   public record MonthRow(int year, int month, double totalHours, BigDecimal totalCost) {}
   public record DayRow(String dayKey, OffsetDateTime from, OffsetDateTime to, double totalHours, BigDecimal totalCost) {}
 // ===== Payslip DTO (what frontend expects) =====
