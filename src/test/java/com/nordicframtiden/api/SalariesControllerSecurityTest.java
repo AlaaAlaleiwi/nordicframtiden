@@ -8,6 +8,7 @@ import com.nordicframtiden.security.model.UserProfile;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;
+import com.nordicframtiden.service.PayslipFreezeService;
 import com.nordicframtiden.service.SalaryAdjustmentService;
 import com.nordicframtiden.service.model.NetSalaryResponse;
 import com.nordicframtiden.settings.EmailService;
@@ -54,6 +55,7 @@ class SalariesControllerSecurityTest {
     @MockitoBean UserProfileRepository profileRepo;
     @MockitoBean AppUserRepository userRepo;
     @MockitoBean PayrollService payrollService;
+    @MockitoBean PayslipFreezeService payslipFreezeService;
     @MockitoBean SalaryAdjustmentService adjustmentService;
     @MockitoBean EmailService emailService;
     @MockitoBean JwtService jwtService;
@@ -105,7 +107,7 @@ class SalariesControllerSecurityTest {
         AppUser alice = mock(AppUser.class);
         when(alice.getId()).thenReturn(7L);
         when(userRepo.findByUsername("alice")).thenReturn(Optional.of(alice));
-        when(payrollService.netSalaryForUserMonth(7L, 2026, 8)).thenReturn(payslip(7L));
+        when(payslipFreezeService.resolve(7L, 2026, 8, "USER")).thenReturn(payslip(7L));
 
         mvc.perform(get("/api/salaries/payslip/me")
                 .param("year", "2026").param("month", "8"))
@@ -162,7 +164,7 @@ class SalariesControllerSecurityTest {
         profile.setEmail("employee@example.com");
         profile.setFullName("Stored Employee");
         when(profileRepo.findByUserId(42L)).thenReturn(Optional.of(profile));
-        when(payrollService.netSalaryForUserMonth(42L, 2026, 8)).thenReturn(payslip(42L));
+        when(payslipFreezeService.resolve(42L, 2026, 8, "USER")).thenReturn(payslip(42L));
         when(emailService.sendSalaryPdfEmail(eq("employee@example.com"), eq("Stored Employee"), any(), eq("2026-08")))
             .thenReturn(true);
 

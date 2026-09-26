@@ -7,6 +7,7 @@ import com.nordicframtiden.pharmacy.ScheduleShiftRepository;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;
+import com.nordicframtiden.service.PayslipFreezeService;
 import com.nordicframtiden.service.SalaryAdjustmentService;
 import com.nordicframtiden.service.model.NetSalaryResponse;
 import com.nordicframtiden.settings.EmailService;
@@ -35,6 +36,7 @@ public class SalariesController {
   private final UserProfileRepository profileRepo;
   private final AppUserRepository userRepo;
   private final PayrollService payrollService;
+  private final PayslipFreezeService payslipFreezeService;
   private final EmailService emailService;
   private final SalaryAdjustmentService adjustmentService;
 
@@ -44,6 +46,7 @@ public class SalariesController {
       UserProfileRepository profileRepo,
       AppUserRepository userRepo,
       PayrollService payrollService,
+      PayslipFreezeService payslipFreezeService,
       EmailService emailService, SalaryAdjustmentService adjustmentService
   ) {
     this.shiftRepo = shiftRepo;
@@ -51,6 +54,7 @@ public class SalariesController {
     this.profileRepo = profileRepo;
     this.userRepo = userRepo;
     this.payrollService = payrollService;
+    this.payslipFreezeService = payslipFreezeService;
     this.emailService = emailService;
     this.adjustmentService = adjustmentService;
   }
@@ -93,7 +97,9 @@ public class SalariesController {
   @PreAuthorize(CAN_MANAGE_SALARIES)
   public NetSalaryResponse saveAdjustments(@RequestParam Long userId,@RequestParam int year,@RequestParam int month,@RequestParam(defaultValue="USER") String role,@RequestBody AdjustmentRequest request){
     adjustmentService.replace(userId,year,month,request.adjustments()==null?List.of():request.adjustments());
-    return payrollService.netSalaryForUserMonth(userId,year,month,role);
+    // Past months are frozen: an explicit save refreshes the stored snapshot
+    // while preserving the historical hourly cost.
+    return payslipFreezeService.afterAdjustmentsSaved(userId,year,month,role);
   }
   /** Live preview: computes the payslip with unsaved hourly cost / adjustment overrides. Nothing is persisted. */
   @PostMapping("/payslip/preview")
@@ -125,7 +131,9 @@ public class SalariesController {
       @RequestParam int year,
       @RequestParam int month
   ) {
-    return payrollService.netSalaryForUserMonth(userId, year, month);
+    // Ended months are served frozen from the snapshot; only the current
+    // month recalculates live when the hourly cost changes.
+    return payslipFreezeService.resolve(userId, year, month, "USER");
   }
   /* ===================== PAYSLIP (ME) ===================== */
 @GetMapping("/payslip/staff")
@@ -135,7 +143,7 @@ public NetSalaryResponse payslipForStaff(
     @RequestParam int year,
     @RequestParam int month
 ) {
-  return payrollService.netSalaryForStaffMonth(userId, year, month);
+  return payslipFreezeService.resolve(userId, year, month, "STAFF");
 }
   // GET /api/salaries/payslip/me?year=2026&month=3
   @GetMapping("/payslip/me")
@@ -145,7 +153,7 @@ public NetSalaryResponse payslipForStaff(
       @RequestParam int month,
       Authentication auth
   ) {
-    return payrollService.netSalaryForUserMonth(currentUserId(auth), year, month);
+    return payslipFreezeService.resolve(currentUserId(auth), year, month, "USER");
   }
 
   private static double round2(double v) {
@@ -224,9 +232,7 @@ public NetSalaryResponse payslipForStaff(
           .body(Map.of("error", "Invalid PDF payload."));
     }
 
-    var payslip = "STAFF".equalsIgnoreCase(role)
-        ? payrollService.netSalaryForStaffMonth(userId, year, month)
-        : payrollService.netSalaryForUserMonth(userId, year, month);
+    var payslip = payslipFreezeService.resolve(userId, year, month, role);
 
     String monthLabel = String.format("%04d-%02d", year, month);
     boolean sent = emailService.sendSalaryPdfEmail(email, employeeName.isBlank() ? "Employee" : employeeName, pdfBytes, monthLabel);
