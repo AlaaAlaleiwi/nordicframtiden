@@ -35,6 +35,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
 
+                        // Unhandled exceptions forward to /error. Leaving it
+                        // secured turned every 500 into a misleading 401.
+                        .requestMatchers("/error").permitAll()
+
                         .requestMatchers("/api/admins/**").hasRole("ADMIN")
 
                         .requestMatchers("/api/users/me").authenticated()

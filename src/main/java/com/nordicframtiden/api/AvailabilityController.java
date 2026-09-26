@@ -8,6 +8,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
 @RestController
@@ -27,6 +28,8 @@ public class AvailabilityController {
       String type, // "DAY" | "WEEK" | "RANGE"
       LocalDate startDate,
       LocalDate endDate,
+      LocalTime startTime, // optional daily from–to window
+      LocalTime endTime,
       String note
   ) {}
 
@@ -38,6 +41,8 @@ public class AvailabilityController {
       String type,
       LocalDate startDate,
       LocalDate endDate,
+      LocalTime startTime,
+      LocalTime endTime,
       String status,
       String note
   ) {}
@@ -52,6 +57,8 @@ public class AvailabilityController {
       String type,
       String startDate,
       String endDate,
+      String startTime,
+      String endTime,
       String status,
       String note
   ) {}
@@ -67,6 +74,8 @@ public class AvailabilityController {
         r.getType().name(),
         r.getStartDate(),
         r.getEndDate(),
+        r.getStartTime(),
+        r.getEndTime(),
         r.getStatus().name(),
         r.getNote()
     );
@@ -81,7 +90,7 @@ public class AvailabilityController {
  
   public AvailabilityDto create(Authentication auth, @RequestBody CreateReq req) {
     var type = AvailabilityRequest.Type.valueOf(req.type());
-    var created = service.createForMe(auth, type, req.startDate(), req.endDate(), req.note());
+    var created = service.createForMe(auth, type, req.startDate(), req.endDate(), req.startTime(), req.endTime(), req.note());
     return toDto(created);
   }
 

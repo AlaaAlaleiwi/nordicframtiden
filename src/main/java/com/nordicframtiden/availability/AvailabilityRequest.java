@@ -4,6 +4,7 @@ import com.nordicframtiden.security.model.AppUser;
 import jakarta.persistence.*;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 
 @Entity
@@ -40,6 +41,14 @@ public class AvailabilityRequest {
   @Column(nullable = false, length = 16)
   private Status status = Status.PENDING;
 
+  // Optional daily working-hours window (from–to) the pharmacist states.
+  // Null means "any time that day".
+  @Column(name = "start_time")
+  private LocalTime startTime;
+
+  @Column(name = "end_time")
+  private LocalTime endTime;
+
   @Column(length = 500)
   private String note;
 
@@ -67,6 +76,12 @@ public class AvailabilityRequest {
 
   public LocalDate getEndDate() { return endDate; }
   public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
+
+  public LocalTime getStartTime() { return startTime; }
+  public void setStartTime(LocalTime startTime) { this.startTime = startTime; }
+
+  public LocalTime getEndTime() { return endTime; }
+  public void setEndTime(LocalTime endTime) { this.endTime = endTime; }
 
   public Status getStatus() { return status; }
   public void setStatus(Status status) { this.status = status; }

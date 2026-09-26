@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 
 @Service
@@ -38,6 +39,8 @@ public class AvailabilityService {
                                         AvailabilityRequest.Type type,
                                         LocalDate start,
                                         LocalDate end,
+                                        LocalTime startTime,
+                                        LocalTime endTime,
                                         String note) {
 
     var user = userRepo.findByUsername(auth.getName())
@@ -46,12 +49,17 @@ public class AvailabilityService {
     if (start == null || end == null) throw new IllegalArgumentException("start/end required");
     if (end.isBefore(start)) throw new IllegalArgumentException("end must be >= start");
     if (start.plusDays(62).isBefore(end)) throw new IllegalArgumentException("range too large");
+    if (startTime != null && endTime != null && !endTime.isAfter(startTime)) {
+      throw new IllegalArgumentException("end time must be after start time");
+    }
 
     var r = new AvailabilityRequest();
     r.setUser(user);
     r.setType(type);
     r.setStartDate(start);
     r.setEndDate(end);
+    r.setStartTime(startTime);
+    r.setEndTime(endTime);
     r.setNote(note == null ? null : note.trim());
 
     // ✅ default status if your entity doesn’t do it
@@ -92,6 +100,8 @@ public class AvailabilityService {
           a.getType().name(),
           a.getStartDate().toString(),
           a.getEndDate().toString(),
+          a.getStartTime() == null ? null : a.getStartTime().toString(),
+          a.getEndTime() == null ? null : a.getEndTime().toString(),
           a.getStatus().name(),
           a.getNote()
       );
