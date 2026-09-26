@@ -57,6 +57,7 @@ public class PasswordResetService {
   }
 
   /** Self-service request from the login page. Returns false when the email is unknown (caller still answers generically). */
+  @Transactional
   public boolean requestReset(String email) {
     if (email == null || email.isBlank()) return false;
     AppUser user = findByEmail(email.trim());
@@ -67,6 +68,7 @@ public class PasswordResetService {
   }
 
   /** Admin-initiated reset: issues a reset-link email. Returns false when the account has no email on file. */
+  @Transactional
   public boolean adminReset(Long userId) {
     AppUser user = userRepo.findById(userId)
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
