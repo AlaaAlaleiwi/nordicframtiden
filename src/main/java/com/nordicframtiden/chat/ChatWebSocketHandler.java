@@ -1,6 +1,8 @@
 package com.nordicframtiden.chat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -9,6 +11,9 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class ChatWebSocketHandler extends TextWebSocketHandler implements ChatEventPublisher, ChatPresence {
@@ -16,12 +21,45 @@ public class ChatWebSocketHandler extends TextWebSocketHandler implements ChatEv
   private final ChatRoomMemberRepository members;
   private final CallSignalingRouter callRouter;
   private final Map<String, Set<WebSocketSession>> sessions = new ConcurrentHashMap<>();
+  // Prunes silently-dead sockets (sleep/wake, crashes, network switches).
+  // Without this, call signals and presence events are routed into dead
+  // sessions and never reach the (reconnected) client.
+  private final ScheduledExecutorService livenessPinger = Executors.newSingleThreadScheduledExecutor();
 
   public ChatWebSocketHandler(ObjectMapper objectMapper, ChatRoomMemberRepository members,
                               CallSignalingRouter callRouter) {
     this.objectMapper = objectMapper;
     this.members = members;
     this.callRouter = callRouter;
+  }
+
+  @PostConstruct
+  void startLivenessPinger() {
+    livenessPinger.scheduleAtFixedRate(this::pingAllSessions, 30, 30, TimeUnit.SECONDS);
+  }
+
+  @PreDestroy
+  void stopLivenessPinger() {
+    livenessPinger.shutdownNow();
+  }
+
+  private void pingAllSessions() {
+    for (var entry : sessions.entrySet()) {
+      for (WebSocketSession session : Set.copyOf(entry.getValue())) {
+        try {
+          synchronized (session) { session.sendMessage(new PingMessage()); }
+        } catch (Exception ignored) {
+          dropSession(entry.getKey(), session);
+        }
+      }
+    }
+  }
+
+  @Override
+  public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
+    if (session.getPrincipal() != null) {
+      dropSession(session.getPrincipal().getName(), session);
+    }
   }
 
   @Override
@@ -35,18 +73,25 @@ public class ChatWebSocketHandler extends TextWebSocketHandler implements ChatEv
   @Override
   public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
     if (session.getPrincipal() == null) return;
-    String username = session.getPrincipal().getName();
+    removeSession(session.getPrincipal().getName(), session);
+  }
+
+  /** Removes one session; runs the user-level disconnect path on the last one. */
+  private synchronized void removeSession(String username, WebSocketSession session) {
     Set<WebSocketSession> userSessions = sessions.get(username);
-    if (userSessions != null) {
-      userSessions.remove(session);
-      if (userSessions.isEmpty()) {
-        sessions.remove(username);
-        for (var route : callRouter.disconnected(username)) {
-          sendTo(route.recipients(), route.event());
-        }
-        broadcastPresence(username, false);
-      }
+    if (userSessions == null) return;
+    userSessions.remove(session);
+    if (!userSessions.isEmpty()) return;
+    sessions.remove(username);
+    for (var route : callRouter.disconnected(username)) {
+      sendTo(route.recipients(), route.event());
     }
+    broadcastPresence(username, false);
+  }
+
+  private void dropSession(String username, WebSocketSession session) {
+    removeSession(username, session);
+    try { session.close(CloseStatus.SESSION_NOT_RELIABLE); } catch (IOException ignored) { }
   }
 
   @Override
