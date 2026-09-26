@@ -41,6 +41,9 @@ class AdminManagementControllerSecurityTest {
     @MockitoBean
     JwtService jwtService;
 
+    @MockitoBean
+    com.nordicframtiden.security.service.PasswordResetService passwordResetService;
+
     @Test
     @WithMockUser(roles = "STAFF")
     void staffCannotAccessAdministratorManagement() throws Exception {

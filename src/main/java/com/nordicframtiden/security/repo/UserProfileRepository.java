@@ -11,4 +11,6 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, Long> 
 
   boolean existsByEmail(String email);
   boolean existsByPhone(String phone);
+
+  Optional<UserProfile> findByEmailIgnoreCase(String email);
 }

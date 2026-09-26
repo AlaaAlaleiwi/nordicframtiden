@@ -14,6 +14,9 @@ import java.util.Map;
 @Service
 public class EmailService {
 
+@org.springframework.beans.factory.annotation.Value("${app.mail.publicBaseUrl:${APP_PUBLIC_BASE_URL:}}")
+    private String publicBaseUrl;
+
     private final JavaMailSender mailSender;
     private final AppSettingsService appSettingsService;
 
@@ -118,6 +121,150 @@ public class EmailService {
             return true;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to send schedule PDF email", e);
+        }
+    }
+
+    // =========================
+    // Password reset (Swedish, professional HTML)
+    // =========================
+
+    /**
+     * Sends the "click the link to choose a new password" email used by both
+     * the self-service reset (login page) and admin-initiated resets.
+     */
+    public boolean sendPasswordResetLink(String to, String username, String rawToken, long ttlMinutes) {
+        // The link opens the self-hosted Swedish reset page on this backend.
+        // Override with APP_PUBLIC_BASE_URL if the API is reachable under a
+        // different public address.
+        String baseUrl = publicBaseUrl.trim();
+        if (baseUrl.isBlank()) {
+            baseUrl = "https://nordicframtiden-644311628279.europe-north1.run.app";
+        }
+        String link = baseUrl + "/auth/reset-password?token=" + rawToken;
+
+        String heading = "Återställ ditt lösenord";
+        String intro = "Hej " + escapeHtml(username) + ",";
+        String body = "Vi har fått en förfrågan om att återställa lösenordet till ditt konto "
+            + "hos <strong>Nordic Framtiden</strong>. Klicka på knappen nedan för att "
+            + "välja ett nytt lösenord. Knappen fungerar i <strong>" + ttlMinutes
+            + " minuter</strong> och kan bara användas en gång.";
+        String cta = "Välj nytt lösenord";
+        String fallback = "Fungerar knappen inte? Kopiera länken nedan och klistra in den i din webbläsare:";
+        String ignore = "Har du inte begärt detta kan du lugnt ignorera mejlet – ditt nuvarande "
+            + "lösenord fortsätter att fungera.";
+        String signature = "Med vänliga hälsningar,<br><strong>Nordic Framtiden</strong>";
+
+        String html = resetEmailTemplate(heading, intro, body, link, cta, fallback, ignore, signature);
+        return sendHtml(to, "Återställ ditt lösenord – Nordic Framtiden", html);
+    }
+
+    /** Confirmation email sent after a password has been changed. */
+    public boolean sendPasswordResetConfirmation(String to, String username) {
+        String heading = "Ditt lösenord har uppdaterats";
+        String intro = "Hej " + escapeHtml(username) + ",";
+        String body = "Ditt lösenord hos <strong>Nordic Framtiden</strong> har nu ändrats och "
+            + "den tidigare återställningslänken är ogiltig. Du kan logga in med ditt nya lösenord.";
+        String securityNote = "Känner du inte igen den här ändringen? Kontakta oss omedelbart så "
+            + "hjälper vi dig att säkra kontot.";
+        String signature = "Med vänliga hälsningar,<br><strong>Nordic Framtiden</strong>";
+
+        String html = confirmationTemplate(heading, intro, body, securityNote, signature);
+        return sendHtml(to, "Ditt lösenord har uppdaterats – Nordic Framtiden", html);
+    }
+
+    private String resetEmailTemplate(String heading, String intro, String body, String link,
+                                      String cta, String fallback, String ignore, String signature) {
+        return """
+            <!DOCTYPE html>
+            <html lang="sv" xmlns:v="urn:schemas-microsoft-com:vml">
+            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#1f2933;">
+              <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8;padding:32px 12px;">
+                <tr><td align="center">
+                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(16,24,40,0.08);">
+                    <tr><td style="background-color:#0f5132;padding:24px 40px;">
+                      <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.5px;">Nordic Framtiden</span>
+                    </td></tr>
+                    <tr><td style="padding:36px 40px 8px 40px;">
+                      <h1 style="margin:0 0 18px 0;font-size:22px;line-height:1.3;color:#101828;">%s</h1>
+                      <p style="margin:0 0 14px 0;font-size:15px;line-height:1.6;">%s</p>
+                      <p style="margin:0 0 26px 0;font-size:15px;line-height:1.6;">%s</p>
+                      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 26px auto;"><tr><td align="center" style="border-radius:8px;background-color:#0f5132;">
+                        <a href="%s" style="display:inline-block;padding:13px 30px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">%s</a>
+                      </td></tr></table>
+                      <p style="margin:0 0 6px 0;font-size:12px;color:#667085;">%s</p>
+                      <p style="margin:0 0 24px 0;font-size:12px;word-break:break-all;color:#475467;">%s</p>
+                      <p style="margin:0 0 8px 0;font-size:13px;color:#475467;">%s</p>
+                      <p style="margin:0;font-size:14px;line-height:1.6;color:#1f2933;">%s</p>
+                    </td></tr>
+                    <tr><td style="padding:20px 40px;background-color:#f9fafb;border-top:1px solid #eaecf0;">
+                      <p style="margin:0;font-size:11px;color:#98a2b3;">Detta är ett automatiskt mejl. Svara inte på det – mejlen övervakas inte.</p>
+                    </td></tr>
+                  </table>
+                </td></tr>
+              </table>
+            </body></html>
+            """.formatted(heading, intro, body, link, cta, fallback, link, ignore, signature);
+    }
+
+    private String confirmationTemplate(String heading, String intro, String body,
+                                        String securityNote, String signature) {
+        return """
+            <!DOCTYPE html>
+            <html lang="sv">
+            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#1f2933;">
+              <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8;padding:32px 12px;">
+                <tr><td align="center">
+                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(16,24,40,0.08);">
+                    <tr><td style="background-color:#0f5132;padding:24px 40px;">
+                      <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.5px;">Nordic Framtiden</span>
+                    </td></tr>
+                    <tr><td style="padding:36px 40px 8px 40px;">
+                      <h1 style="margin:0 0 18px 0;font-size:22px;line-height:1.3;color:#101828;">%s</h1>
+                      <p style="margin:0 0 14px 0;font-size:15px;line-height:1.6;">%s</p>
+                      <p style="margin:0 0 26px 0;font-size:15px;line-height:1.6;">%s</p>
+                      <div style="border-left:3px solid #0f5132;background:#f2f7f5;padding:12px 16px;border-radius:0 8px 8px 0;font-size:13px;line-height:1.6;color:#344054;">%s</div>
+                      <p style="margin:26px 0 0 0;font-size:14px;line-height:1.6;">%s</p>
+                    </td></tr>
+                    <tr><td style="padding:20px 40px;background-color:#f9fafb;border-top:1px solid #eaecf0;">
+                      <p style="margin:0;font-size:11px;color:#98a2b3;">Detta är ett automatiskt mejl. Svara inte på det – mejlen övervakas inte.</p>
+                    </td></tr>
+                  </table>
+                </td></tr>
+              </table>
+            </body></html>
+            """.formatted(heading, intro, body, securityNote, signature);
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace("\"", "&quot;").replace("'", "&#39;");
+    }
+
+    /** Shared HTML sender; mirrors the guard clauses used by the other senders. */
+    private boolean sendHtml(String to, String subject, String html) {
+        Map<String, String> mail = appSettingsService.getMailSettings();
+        if (!Boolean.parseBoolean(mail.getOrDefault("enabled", "false"))) {
+            return false;
+        }
+        String host = mail.getOrDefault("host", "").trim();
+        String from = mail.getOrDefault("from", "").trim();
+        if (host.isBlank() || to == null || to.isBlank()) {
+            return false;
+        }
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, StandardCharsets.UTF_8.name());
+            helper.setFrom(from.isBlank() ? to : from);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(html, true);
+            mailSender.send(mimeMessage);
+            return true;
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to send email", e);
         }
     }
 

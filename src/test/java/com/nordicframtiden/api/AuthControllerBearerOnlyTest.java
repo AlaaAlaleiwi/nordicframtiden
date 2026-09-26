@@ -37,6 +37,7 @@ class AuthControllerBearerOnlyTest {
     @MockitoBean AppUserRepository userRepo;
     @MockitoBean UserProfileRepository userProfiles;
     @MockitoBean AdminProfileRepository adminProfiles;
+    @MockitoBean com.nordicframtiden.security.service.PasswordResetService passwordResetService;
 
     @Test
     void loginReturnsBearerTokenWithoutSettingAuthenticationCookies() throws Exception {

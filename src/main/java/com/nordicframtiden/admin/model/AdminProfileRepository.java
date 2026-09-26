@@ -10,4 +10,5 @@ public interface AdminProfileRepository extends JpaRepository<AdminProfile, Long
 
   Optional<AdminProfile> findByUserId(Long userId);
 
+  Optional<AdminProfile> findByEmailIgnoreCase(String email);
 }

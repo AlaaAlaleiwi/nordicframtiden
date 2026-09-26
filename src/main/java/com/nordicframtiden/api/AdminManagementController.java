@@ -2,6 +2,7 @@ package com.nordicframtiden.api;
 
 import com.nordicframtiden.admin.AdminService;
 import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.service.PasswordResetService;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import com.nordicframtiden.security.model.Role;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admins")
@@ -18,12 +20,15 @@ import java.util.List;
 public class AdminManagementController {
 
     private final AdminService adminService;
+    private final PasswordResetService passwordResetService;
     private final AppUserRepository repo;
 
     public AdminManagementController(AdminService adminService,
-                                     AppUserRepository repo) {
+                                     AppUserRepository repo,
+                                     PasswordResetService passwordResetService) {
         this.adminService = adminService;
         this.repo = repo;
+        this.passwordResetService = passwordResetService;
     }
 
     /* =========================
@@ -166,9 +171,14 @@ public class AdminManagementController {
   }
 
     @PostMapping("/{id}/reset-password")
-    public ResetPasswordResponse resetPassword(@PathVariable Long id) {
-        var updated = adminService.resetAdminPassword(id);
-        return new ResetPasswordResponse(updated.id(), updated.username(), updated.password());
+    public ResponseEntity<?> resetPassword(@PathVariable Long id) {
+        boolean sent = passwordResetService.adminReset(id);
+        if (!sent) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "Adminen har ingen registrerad mejladress."));
+        }
+        return ResponseEntity.ok(Map.of("message",
+                "Återställningsmejl skickat. Adminen väljer ett nytt lösenord via länken."));
     }
 
     @DeleteMapping("/{id}")

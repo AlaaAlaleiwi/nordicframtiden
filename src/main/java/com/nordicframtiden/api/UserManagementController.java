@@ -2,6 +2,7 @@ package com.nordicframtiden.api;
 
 import com.nordicframtiden.security.model.Permission;
 import com.nordicframtiden.security.model.Role;
+import com.nordicframtiden.security.service.PasswordResetService;
 import com.nordicframtiden.security.service.UserService;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @RestController
@@ -21,9 +23,11 @@ import java.util.Set;
 public class UserManagementController {
 
   private final UserService userService;
+  private final PasswordResetService passwordResetService;
 
-  public UserManagementController(UserService userService) {
+  public UserManagementController(UserService userService, PasswordResetService passwordResetService) {
     this.userService = userService;
+    this.passwordResetService = passwordResetService;
   }
 
   // ---------- DTOs ----------
@@ -210,11 +214,17 @@ public class UserManagementController {
     userService.deleteUser(id);
   }
 
-  // ✅ ADMIN only reset-password
+  // ✅ ADMIN only reset-password — sends a personal reset-link email; no
+  // temporary password is returned or sent in clear text.
   @PostMapping("/{id}/reset-password")
   @PreAuthorize("hasRole('ADMIN')")
-  public UserResponse resetPassword(@PathVariable Long id) {
-    var updated = userService.resetPassword(id);
-    return toResponse(updated, updated.password());
+  public ResponseEntity<?> resetPassword(@PathVariable Long id) {
+    boolean sent = passwordResetService.adminReset(id);
+    if (!sent) {
+      return ResponseEntity.status(HttpStatus.CONFLICT)
+          .body(Map.of("error", "Användaren har ingen registrerad mejladress."));
+    }
+    return ResponseEntity.ok(Map.of("message",
+        "Återställningsmejl skickat. Användaren väljer ett nytt lösenord via länken."));
   }
 }

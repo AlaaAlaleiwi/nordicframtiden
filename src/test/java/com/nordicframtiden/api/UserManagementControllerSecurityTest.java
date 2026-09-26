@@ -46,6 +46,9 @@ class UserManagementControllerSecurityTest {
     @MockitoBean
     AppUserRepository userRepository;
 
+    @MockitoBean
+    com.nordicframtiden.security.service.PasswordResetService passwordResetService;
+
     @Test
     @WithMockUser(roles = "USER")
     void userCannotListAccounts() throws Exception {

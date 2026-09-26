@@ -1,0 +1,174 @@
+package com.nordicframtiden.security.service;
+
+import com.nordicframtiden.admin.model.AdminProfileRepository;
+import com.nordicframtiden.security.model.AppUser;
+import com.nordicframtiden.security.model.PasswordResetToken;
+import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.repo.PasswordResetTokenRepository;
+import com.nordicframtiden.security.repo.UserProfileRepository;
+import com.nordicframtiden.settings.EmailService;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.security.SecureRandom;
+import java.time.OffsetDateTime;
+import java.util.Base64;
+import java.util.Optional;
+
+/**
+ * Password reset flows:
+ * <ul>
+ *   <li>Self-service: the user enters their registered email on the login
+ *       page and receives an email with a link to the reset page where a new
+ *       password is chosen.</li>
+ *   <li>Admin-initiated: an admin resets a user's/admin's password; the
+ *       person receives an email with a personal reset link (no temporary
+ *       password is sent in clear text).</li>
+ * </ul>
+ * Only the SHA-256 hash of each token is stored; tokens are single-use and
+ * expire after {@link #TOKEN_TTL_MINUTES} minutes.
+ */
+@Service
+public class PasswordResetService {
+
+  public static final int TOKEN_TTL_MINUTES = 60;
+
+  private final AppUserRepository userRepo;
+  private final UserProfileRepository userProfileRepo;
+  private final AdminProfileRepository adminProfileRepo;
+  private final PasswordResetTokenRepository tokenRepo;
+  private final EmailService emailService;
+  private final PasswordEncoder encoder;
+  private final SecureRandom random = new SecureRandom();
+
+  public PasswordResetService(AppUserRepository userRepo,
+                              UserProfileRepository userProfileRepo,
+                              AdminProfileRepository adminProfileRepo,
+                              PasswordResetTokenRepository tokenRepo,
+                              EmailService emailService,
+                              PasswordEncoder encoder) {
+    this.userRepo = userRepo;
+    this.userProfileRepo = userProfileRepo;
+    this.adminProfileRepo = adminProfileRepo;
+    this.tokenRepo = tokenRepo;
+    this.emailService = emailService;
+    this.encoder = encoder;
+  }
+
+  /** Self-service request from the login page. Returns false when the email is unknown (caller still answers generically). */
+  public boolean requestReset(String email) {
+    if (email == null || email.isBlank()) return false;
+    AppUser user = findByEmail(email.trim());
+    if (user == null) return false;
+    String rawToken = createToken(user);
+    emailService.sendPasswordResetLink(email.trim(), user.getUsername(), rawToken, TOKEN_TTL_MINUTES);
+    return true;
+  }
+
+  /** Admin-initiated reset: issues a reset-link email. Returns false when the account has no email on file. */
+  public boolean adminReset(Long userId) {
+    AppUser user = userRepo.findById(userId)
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+    String email = emailOf(user);
+    if (email == null || email.isBlank()) return false;
+    String rawToken = createToken(user);
+    emailService.sendPasswordResetLink(email, user.getUsername(), rawToken, TOKEN_TTL_MINUTES);
+    return true;
+  }
+
+  /** True when the token exists, is unused and unexpired. */
+  @Transactional(readOnly = true)
+  public boolean isValid(String rawToken) {
+    return findValidToken(rawToken) != null;
+  }
+
+  /** Consumes a valid token and sets the new password. */
+  @Transactional
+  public void resetPassword(String rawToken, String newPassword) {
+    PasswordResetToken token = findValidToken(rawToken);
+    if (token == null) {
+      throw new IllegalArgumentException("Ogiltig eller utgången återställningslänk.");
+    }
+    String problem = PasswordPolicy.problemWith(newPassword);
+    if (problem != null) {
+      throw new IllegalArgumentException(problem);
+    }
+
+    AppUser user = token.getUser();
+    user.setPasswordHash(encoder.encode(newPassword));
+    userRepo.save(user);
+
+    token.setUsedAt(OffsetDateTime.now());
+    tokenRepo.save(token);
+
+    String email = emailOf(user);
+    if (email != null && !email.isBlank()) {
+      emailService.sendPasswordResetConfirmation(email, user.getUsername());
+    }
+  }
+
+  // ---------- helpers ----------
+
+  private PasswordResetToken findValidToken(String rawToken) {
+    if (rawToken == null || rawToken.isBlank()) return null;
+    Optional<PasswordResetToken> found = tokenRepo.findByTokenHash(PasswordResetToken.hashOf(rawToken));
+    if (found.isEmpty()) return null;
+    PasswordResetToken token = found.get();
+    if (token.isUsed() || token.getExpiresAt().isBefore(OffsetDateTime.now())) return null;
+    return token;
+  }
+
+  private String createToken(AppUser user) {
+    tokenRepo.deleteByUserId(user.getId());
+    byte[] bytes = new byte[32];
+    random.nextBytes(bytes);
+    String raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    PasswordResetToken token = new PasswordResetToken();
+    token.setUser(user);
+    token.setTokenHash(PasswordResetToken.hashOf(raw));
+    token.setExpiresAt(OffsetDateTime.now().plusMinutes(TOKEN_TTL_MINUTES));
+    tokenRepo.save(token);
+    return raw;
+  }
+
+  private AppUser findByEmail(String email) {
+    Optional<Long> viaUserProfile = userProfileRepo.findByEmailIgnoreCase(email).map(p -> p.getUser().getId());
+    if (viaUserProfile.isPresent()) {
+      return userRepo.findById(viaUserProfile.get()).orElse(null);
+    }
+    Optional<Long> viaAdminProfile = adminProfileRepo.findByEmailIgnoreCase(email).map(p -> p.getUser().getId());
+    if (viaAdminProfile.isPresent()) {
+      return userRepo.findById(viaAdminProfile.get()).orElse(null);
+    }
+    // Fallback: some accounts log in with their email as username.
+    return userRepo.findByUsername(email).orElse(null);
+  }
+
+  private String emailOf(AppUser user) {
+    String viaUserProfile = userProfileRepo.findByUserId(user.getId()).map(p -> p.getEmail()).orElse(null);
+    if (viaUserProfile != null && !viaUserProfile.isBlank()) return viaUserProfile;
+    String viaAdminProfile = adminProfileRepo.findByUserId(user.getId()).map(p -> p.getEmail()).orElse(null);
+    if (viaAdminProfile != null && !viaAdminProfile.isBlank()) return viaAdminProfile;
+    return null;
+  }
+
+  /** Minimal shared password policy for reset flows. */
+  static final class PasswordPolicy {
+    private PasswordPolicy() {}
+
+    /** Returns null when acceptable, otherwise a Swedish error message. */
+    static String problemWith(String password) {
+      if (password == null || password.length() < 8) {
+        return "Lösenordet måste vara minst 8 tecken.";
+      }
+      if (password.length() > 128) {
+        return "Lösenordet får vara högst 128 tecken.";
+      }
+      if (!password.matches(".*[A-Za-zåäöÅÄÖ].*") || !password.matches(".*[0-9].*")) {
+        return "Lösenordet måste innehålla både bokstäver och siffror.";
+      }
+      return null;
+    }
+  }
+}
