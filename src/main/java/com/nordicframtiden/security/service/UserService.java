@@ -1,5 +1,10 @@
 package com.nordicframtiden.security.service;
 
+import com.nordicframtiden.availability.AvailabilityRequestRepository;
+import com.nordicframtiden.chat.CallHistoryRepository;
+import com.nordicframtiden.chat.ChatMessageRepository;
+import com.nordicframtiden.chat.ChatRoomRepository;
+import com.nordicframtiden.company.StaffShiftRepository;
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.model.Permission;
 import com.nordicframtiden.security.model.Role;
@@ -25,12 +30,27 @@ public class UserService {
   private final UserProfileRepository profileRepo;
   private final PasswordEncoder encoder;
   private final EmailService emailService;
+  // Tables that reference app_user without ON DELETE CASCADE; their rows must
+  // be removed explicitly before deleting the user or Postgres rejects the
+  // delete with a foreign-key violation.
+  private final StaffShiftRepository staffShifts;
+  private final AvailabilityRequestRepository availabilityRequests;
+  private final CallHistoryRepository callHistory;
+  private final ChatRoomRepository chatRooms;
+  private final ChatMessageRepository chatMessages;
 
-  public UserService(AppUserRepository userRepo, UserProfileRepository profileRepo, PasswordEncoder encoder, EmailService emailService) {
+  public UserService(AppUserRepository userRepo, UserProfileRepository profileRepo, PasswordEncoder encoder, EmailService emailService,
+                     StaffShiftRepository staffShifts, AvailabilityRequestRepository availabilityRequests,
+                     CallHistoryRepository callHistory, ChatRoomRepository chatRooms, ChatMessageRepository chatMessages) {
     this.userRepo = userRepo;
     this.profileRepo = profileRepo;
     this.encoder = encoder;
     this.emailService = emailService;
+    this.staffShifts = staffShifts;
+    this.availabilityRequests = availabilityRequests;
+    this.callHistory = callHistory;
+    this.chatRooms = chatRooms;
+    this.chatMessages = chatMessages;
   }
 
   // ---------- Records ----------
@@ -351,6 +371,15 @@ public class UserService {
     if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
       throw new IllegalArgumentException("Cannot delete ADMIN from /api/users");
     }
+
+    // Delete dependent rows whose foreign keys lack ON DELETE CASCADE,
+    // otherwise the final delete fails (staff_shift, availability_request,
+    // call_history, chat_message, chat_room.created_by).
+    staffShifts.deleteByUser(u);
+    availabilityRequests.deleteByUser(u);
+    callHistory.deleteByCaller(u);
+    chatRooms.deleteByCreatedBy(u);
+    chatMessages.deleteBySender(u);
 
     profileRepo.findByUserId(id).ifPresent(profileRepo::delete);
     userRepo.delete(u);
