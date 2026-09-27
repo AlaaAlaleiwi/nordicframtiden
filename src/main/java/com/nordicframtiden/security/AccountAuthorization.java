@@ -35,6 +35,24 @@ public class AccountAuthorization {
             .orElse(false);
     }
 
+    /**
+     * Who may see the documents on a profile: admins and PERM_PEOPLE holders
+     * (same audience as canManage) plus the owner themselves.
+     */
+    public boolean canViewDocuments(Authentication authentication, Long targetUserId) {
+        if (authentication == null || !authentication.isAuthenticated() || targetUserId == null) {
+            return false;
+        }
+
+        if (hasAuthority(authentication, ADMIN) || hasAuthority(authentication, PEOPLE)) {
+            return true;
+        }
+
+        return userRepository.findById(targetUserId)
+            .map(user -> user.getUsername().equals(authentication.getName()))
+            .orElse(false);
+    }
+
     private static boolean hasAuthority(Authentication authentication, String authority) {
         return authentication.getAuthorities().stream()
             .anyMatch(granted -> authority.equals(granted.getAuthority()));
