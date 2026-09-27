@@ -1,11 +1,12 @@
 package com.nordicframtiden.contact;
 
 import com.nordicframtiden.settings.AppSettingsService;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Properties;
 
@@ -15,6 +16,8 @@ public class ContactNotificationService {
     /** Bounds so a wedged SMTP server can never hang an HTTP request. */
     static final String SMTP_CONNECTION_TIMEOUT_MS = "10000";
     static final String SMTP_IO_TIMEOUT_MS = "15000";
+
+    private static final String BRAND_GREEN = "#0f5132";
 
     private final AppSettingsService appSettingsService;
 
@@ -57,16 +60,10 @@ public class ContactNotificationService {
             return;
         }
 
-        JavaMailSenderImpl sender = senderFor(mail);
-
-        SimpleMailMessage message = new SimpleMailMessage();
         String from = mail.getOrDefault("from", "").trim();
-        message.setFrom(from.isBlank() ? to : from);
-        message.setTo(to);
-        message.setSubject("New contact request: " + request.getTopic());
-        message.setText(buildBody(request));
-
-        sender.send(message);
+        String html = buildNewRequestHtml(request);
+        String subject = "Ny kontaktförfrågan: " + request.getTopic() + " – " + request.getName();
+        sendHtml(senderFor(mail), from.isBlank() ? to : from, to, subject, html);
     }
 
     private void doSendAdminReplyNotification(ContactRequest request, String adminNote) {
@@ -91,22 +88,12 @@ public class ContactNotificationService {
             return;
         }
 
-        JavaMailSenderImpl sender = senderFor(mail);
-
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(from.isBlank() ? recipient : from);
-        message.setTo(recipient);
-        message.setSubject("Reply to your contact request");
-        message.setText(
-            "Hello " + request.getName() + ",\n\n"
-                + "We have added a response to your contact request.\n\n"
-                + "Message:\n"
-                + note + "\n\n"
-                + "Best regards,\n"
-                + "Nordic Framtiden"
-        );
-
-        sender.send(message);
+        // The reply signature shows who actually answered (recorded by the
+        // attribution logic before the notification is sent).
+        String replier = request.getHandledByName();
+        String html = buildReplyHtml(request, note, replier);
+        String subject = "Svar på din kontaktförfrågan – Nordic Framtiden";
+        sendHtml(senderFor(mail), from.isBlank() ? recipient : from, recipient, subject, html);
     }
 
     /**
@@ -158,18 +145,131 @@ public class ContactNotificationService {
         }
     }
 
-    private String buildBody(ContactRequest request) {
-        return "New contact request\n\n"
-            + "Type: " + request.getType() + "\n"
-            + "Name: " + request.getName() + "\n"
-            + "Organization: " + safe(request.getOrganization()) + "\n"
-            + "Email: " + request.getEmail() + "\n"
-            + "Phone: " + safe(request.getPhone()) + "\n"
-            + "Topic: " + request.getTopic() + "\n\n"
-            + "Message:\n" + request.getMessage();
+    /** Sends an HTML email; failures propagate to the async wrapper's logger. */
+    private void sendHtml(JavaMailSenderImpl sender, String from, String to, String subject, String html) {
+        try {
+            var mimeMessage = sender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, StandardCharsets.UTF_8.name());
+            helper.setFrom(from);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(html, true);
+            sender.send(mimeMessage);
+        } catch (jakarta.mail.MessagingException e) {
+            throw new org.springframework.mail.MailParseException(e);
+        }
     }
 
-    private String safe(String value) {
-        return value == null ? "-" : value;
+    // ================= Templates =================
+
+    /**
+     * The reply to the person who wrote in: branded card, personal greeting,
+     * the reply in a highlighted box, their original message quoted, and a
+     * signature naming the person who answered. All dynamic values escaped.
+     */
+    static String buildReplyHtml(ContactRequest request, String replyText, String replierName) {
+        String name = escapeHtml(request.getName());
+        String reply = escapeHtml(replyText).replace("\n", "<br>");
+        String original = escapeHtml(request.getMessage()).replace("\n", "<br>");
+        String signature = (replierName == null || replierName.isBlank())
+            ? "<strong>Nordic Framtiden</strong>"
+            : escapeHtml(replierName) + "<br><strong>Nordic Framtiden</strong>";
+
+        return """
+            <!DOCTYPE html>
+            <html lang="sv">
+            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#1f2933;">
+              <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8;padding:32px 12px;">
+                <tr><td align="center">
+                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(16,24,40,0.08);">
+                    <tr><td style="background-color:%s;padding:24px 40px;">
+                      <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.5px;">Nordic Framtiden</span>
+                    </td></tr>
+                    <tr><td style="padding:36px 40px 8px 40px;">
+                      <h1 style="margin:0 0 18px 0;font-size:22px;line-height:1.3;color:#101828;">Svar på din kontaktförfrågan</h1>
+                      <p style="margin:0 0 14px 0;font-size:15px;line-height:1.6;">Hej %s,</p>
+                      <p style="margin:0 0 20px 0;font-size:15px;line-height:1.6;">Tack för att du hörde av dig. Här är vårt svar på din förfrågan:</p>
+                      <div style="border-left:3px solid %s;background:#f2f7f5;padding:14px 18px;border-radius:0 8px 8px 0;font-size:15px;line-height:1.7;color:#1f2933;">
+                        %s
+                      </div>
+                      <p style="margin:26px 0 0 0;font-size:14px;line-height:1.6;color:#1f2933;">%s</p>
+                      <div style="margin:28px 0 0 0;padding-top:18px;border-top:1px solid #eaecf0;">
+                        <p style="margin:0 0 10px 0;font-size:12px;font-weight:600;color:#98a2b3;text-transform:uppercase;letter-spacing:0.5px;">Din förfrågan</p>
+                        <div style="background:#f9fafb;border:1px solid #eaecf0;border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.6;color:#667085;">
+                          %s
+                        </div>
+                      </div>
+                    </td></tr>
+                    <tr><td style="padding:20px 40px;background-color:#f9fafb;border-top:1px solid #eaecf0;">
+                      <p style="margin:0;font-size:11px;color:#98a2b3;">Detta är ett automatiskt mejl. Svara inte direkt på det – nya frågor skickas enklast via kontaktformuläret på vår webbplats.</p>
+                    </td></tr>
+                  </table>
+                </td></tr>
+              </table>
+            </body></html>
+            """.formatted(
+                BRAND_GREEN, name, BRAND_GREEN, reply, signature, original);
+    }
+
+    /** Internal notification about a new request: branded card with a detail grid. */
+    static String buildNewRequestHtml(ContactRequest request) {
+        String type = safeCell(request.getType());
+        String name = safeCell(request.getName());
+        String organization = safeCell(request.getOrganization());
+        String email = safeCell(request.getEmail());
+        String phone = safeCell(request.getPhone());
+        String topic = safeCell(request.getTopic());
+        String message = escapeHtml(request.getMessage()).replace("\n", "<br>");
+
+        return """
+            <!DOCTYPE html>
+            <html lang="sv">
+            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#1f2933;">
+              <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8;padding:32px 12px;">
+                <tr><td align="center">
+                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(16,24,40,0.08);">
+                    <tr><td style="background-color:%s;padding:24px 40px;">
+                      <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.5px;">Nordic Framtiden</span>
+                    </td></tr>
+                    <tr><td style="padding:36px 40px 8px 40px;">
+                      <h1 style="margin:0 0 6px 0;font-size:22px;line-height:1.3;color:#101828;">Ny kontaktförfrågan</h1>
+                      <p style="margin:0 0 22px 0;font-size:14px;color:#667085;">En ny förfrågan har kommit in via webbplatsens kontaktformulär.</p>
+                      <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.6;color:#344054;">
+                        <tr><td style="padding:6px 0;width:120px;color:#667085;">Typ</td><td style="padding:6px 0;font-weight:600;">%s</td></tr>
+                        <tr><td style="padding:6px 0;color:#667085;">Namn</td><td style="padding:6px 0;font-weight:600;">%s</td></tr>
+                        <tr><td style="padding:6px 0;color:#667085;">Organisation</td><td style="padding:6px 0;">%s</td></tr>
+                        <tr><td style="padding:6px 0;color:#667085;">E-post</td><td style="padding:6px 0;">%s</td></tr>
+                        <tr><td style="padding:6px 0;color:#667085;">Telefon</td><td style="padding:6px 0;">%s</td></tr>
+                        <tr><td style="padding:6px 0;color:#667085;">Ämne</td><td style="padding:6px 0;font-weight:600;">%s</td></tr>
+                      </table>
+                      <div style="margin:20px 0 0 0;padding-top:18px;border-top:1px solid #eaecf0;">
+                        <p style="margin:0 0 10px 0;font-size:12px;font-weight:600;color:#98a2b3;text-transform:uppercase;letter-spacing:0.5px;">Meddelande</p>
+                        <div style="background:#f9fafb;border:1px solid #eaecf0;border-radius:8px;padding:12px 16px;font-size:14px;line-height:1.7;color:#1f2933;">
+                          %s
+                        </div>
+                      </div>
+                      <p style="margin:22px 0 0 0;font-size:13px;line-height:1.6;color:#475467;">Svara på förfrågan via <strong>Kontakter</strong> i admindelen av appen eller webbplatsen.</p>
+                    </td></tr>
+                    <tr><td style="padding:20px 40px;background-color:#f9fafb;border-top:1px solid #eaecf0;">
+                      <p style="margin:0;font-size:11px;color:#98a2b3;">Detta är ett automatiskt mejl från Nordic Framtiden.</p>
+                    </td></tr>
+                  </table>
+                </td></tr>
+              </table>
+            </body></html>
+            """.formatted(
+                BRAND_GREEN, type, name, organization, email, phone, topic, message);
+    }
+
+    private static String safeCell(String value) {
+        return escapeHtml(value == null || value.isBlank() ? "-" : value);
+    }
+
+    static String escapeHtml(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace("\"", "&quot;").replace("'", "&#39;");
     }
 }

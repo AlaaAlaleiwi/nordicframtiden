@@ -95,4 +95,58 @@ class ContactNotificationServiceTest {
         Properties props = ContactNotificationService.buildMailProperties(mailSettings("587"));
         assertFalse("300000".equals(props.getProperty("mail.smtp.timeout")));
     }
+
+    @Test
+    void replyEmailIsBrandedHtml() {
+        ContactRequest request = new ContactRequest();
+        request.setName("Anna Andersson");
+        request.setEmail("anna@example.com");
+        request.setTopic("KONSULTATION");
+        request.setMessage("Hej, jag undrar om era tjänster…");
+
+        String html = ContactNotificationService.buildReplyHtml(request, "Vi hör av oss imorgon.", "Alaa Alaleiwi");
+
+        assertTrue(html.contains("Nordic Framtiden"), "brand header");
+        assertTrue(html.contains("Hej Anna Andersson"), "personal greeting");
+        assertTrue(html.contains("Vi hör av oss imorgon."), "the reply text");
+        assertTrue(html.contains("Alaa Alaleiwi"), "signature with the replier's name");
+        assertTrue(html.contains("jag undrar om era tjänster"), "quoted original message");
+        assertTrue(html.startsWith("<!DOCTYPE html>"), "HTML document");
+        assertTrue(html.contains("color:#0f5132") || html.contains("#0f5132"), "brand green");
+    }
+
+    @Test
+    void replyHtmlEscapesUserContent() {
+        ContactRequest request = new ContactRequest();
+        request.setName("Eve <script>");
+        request.setEmail("eve@example.com");
+        request.setTopic("ANNAT");
+        request.setMessage("<img src=x onerror=alert(1)>");
+
+        String html = ContactNotificationService.buildReplyHtml(request, "Säkert svar & <b>utan</b> risker", "Admin");
+
+        assertFalse(html.contains("<script>"), "name is escaped");
+        assertFalse(html.contains("<img src=x"), "message is escaped");
+        assertFalse(html.contains("<b>utan</b>"), "reply text is escaped");
+        assertTrue(html.contains("&lt;img"), "escaped markup visible as text");
+    }
+
+    @Test
+    void newRequestNotificationAlsoUsesBrandedHtml() {
+        ContactRequest request = new ContactRequest();
+        request.setName("Anna Andersson");
+        request.setEmail("anna@example.com");
+        request.setPhone("0701234567");
+        request.setType("APOTEK");
+        request.setTopic("BEMANNING");
+        request.setMessage("Vi behöver en farmaceut i mars.");
+
+        String html = ContactNotificationService.buildNewRequestHtml(request);
+
+        assertTrue(html.contains("Nytt kontaktförfrågan") || html.contains("Ny kontaktförfrågan"), "swedish subject context");
+        assertTrue(html.contains("Anna Andersson"));
+        assertTrue(html.contains("BEMANNING"));
+        assertTrue(html.contains("Vi behöver en farmaceut i mars."));
+        assertTrue(html.startsWith("<!DOCTYPE html>"));
+    }
 }
