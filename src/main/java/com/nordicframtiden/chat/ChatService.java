@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 
@@ -38,7 +39,13 @@ public class ChatService {
 
   @Transactional(readOnly = true)
   public List<ChatRoom> visibleRooms(Authentication auth) {
-    return rooms.findVisibleTo(current(auth).getId());
+    Long userId = current(auth).getId();
+    List<ChatRoom> all = new ArrayList<>(rooms.findVisibleTo(userId));
+    // Public channels the user has not joined are discoverable: they show up
+    // in the room list/search ("Available to join") and can be joined from
+    // there. Without this, a newly created account sees an empty chat.
+    all.addAll(rooms.findDiscoverable(userId, ChatRoom.Type.CHANNEL));
+    return all;
   }
 
   @Transactional

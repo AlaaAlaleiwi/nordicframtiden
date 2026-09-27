@@ -15,6 +15,20 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
       """)
   List<ChatRoom> findVisibleTo(@Param("userId") Long userId);
 
+  /**
+   * Public channels the user has NOT joined yet — discoverable in the room
+   * list/search and joinable. Private channels and other people's direct
+   * messages stay invisible.
+   */
+  @Query("""
+      select r from ChatRoom r
+      where r.type = :channelType
+        and r.privateChannel = false
+        and not exists (select m from ChatRoomMember m where m.room = r and m.user.id = :userId)
+      order by r.createdAt desc
+      """)
+  List<ChatRoom> findDiscoverable(@Param("userId") Long userId, @Param("channelType") ChatRoom.Type channelType);
+
   @Query(value = """
       select r.* from chat_room r
       where r.type = 'DIRECT'
