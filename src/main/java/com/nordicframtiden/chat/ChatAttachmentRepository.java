@@ -8,4 +8,6 @@ public interface ChatAttachmentRepository extends JpaRepository<ChatAttachment, 
   List<ChatAttachment> findByMessageIdOrderById(Long messageId);
 
   List<ChatAttachment> findByIdInAndMessageIdIsNullAndUploaderId(List<Long> ids, Long uploaderId);
+
+  void deleteByUploaderId(Long uploaderId);
 }

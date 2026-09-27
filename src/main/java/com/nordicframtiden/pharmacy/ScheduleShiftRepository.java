@@ -24,4 +24,17 @@ List<ScheduleShift> findInRange(
   @Param("pharmacyId") Long pharmacyId,
   @Param("userId") Long userId
 );
+
+/** Any other shift of this user intersecting the [start, end) window (day-conflict check). */
+@Query("""
+  select s from ScheduleShift s
+  where s.user.id = :userId
+    and s.startAt < :end
+    and s.endAt > :start
+""")
+List<ScheduleShift> findByUserIdAndStartAtLessThanAndEndAtGreaterThan(
+  @Param("userId") Long userId,
+  @Param("end") OffsetDateTime end,
+  @Param("start") OffsetDateTime start
+);
 }

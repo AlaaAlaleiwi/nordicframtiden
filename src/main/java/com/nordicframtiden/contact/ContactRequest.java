@@ -38,6 +38,14 @@ public class ContactRequest {
   @Column(length = 600)
   private String adminNote;
 
+  /** Display name of the admin/staff who replied (resolved from the profile). */
+  @Column(length = 160)
+  private String handledByName;
+
+  /** Username of the account that replied (stable identifier). */
+  @Column(length = 60)
+  private String handledByUsername;
+
   @Column(nullable = false)
   private OffsetDateTime createdAt = OffsetDateTime.now();
 
@@ -74,6 +82,12 @@ public class ContactRequest {
 
   public String getAdminNote() { return adminNote; }
   public void setAdminNote(String adminNote) { this.adminNote = adminNote; }
+
+  public String getHandledByName() { return handledByName; }
+  public void setHandledByName(String handledByName) { this.handledByName = handledByName; }
+
+  public String getHandledByUsername() { return handledByUsername; }
+  public void setHandledByUsername(String handledByUsername) { this.handledByUsername = handledByUsername; }
 
   public OffsetDateTime getCreatedAt() { return createdAt; }
   public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }

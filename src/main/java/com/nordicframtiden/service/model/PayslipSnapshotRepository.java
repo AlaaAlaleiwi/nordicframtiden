@@ -8,4 +8,7 @@ public interface PayslipSnapshotRepository extends JpaRepository<PayslipSnapshot
   Optional<PayslipSnapshot> findByUserIdAndYearAndMonthAndRole(Long userId, Integer year, Integer month, String role);
 
   void deleteByUserIdAndYearAndMonthAndRole(Long userId, Integer year, Integer month, String role);
+
+  /** Account deletion cleanup (payslip_snapshot has no FK to app_user). */
+  void deleteByUserId(Long userId);
 }

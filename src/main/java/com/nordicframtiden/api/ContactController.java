@@ -4,6 +4,7 @@ import com.nordicframtiden.contact.ContactRequest;
 import com.nordicframtiden.contact.ContactRequestService;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
@@ -29,9 +30,7 @@ public class ContactController {
       String phone,
       @NotBlank String topic,
       @NotBlank String message
-  ) {}
-
-  public record ContactResponse(
+  ) {}  public record ContactResponse(
       Long id,
       String type,
       String name,
@@ -43,8 +42,10 @@ public class ContactController {
       boolean handled,
       String adminNote,
       OffsetDateTime createdAt,
-      OffsetDateTime handledAt
-  ) {
+      OffsetDateTime handledAt,
+      String handledByName,
+      String handledByUsername
+    ) {
     static ContactResponse from(ContactRequest c) {
       return new ContactResponse(
           c.getId(),
@@ -58,7 +59,9 @@ public class ContactController {
           c.isHandled(),
           c.getAdminNote(),
           c.getCreatedAt(),
-          c.getHandledAt()
+          c.getHandledAt(),
+          c.getHandledByName(),
+          c.getHandledByUsername()
       );
     }
   }
@@ -89,9 +92,11 @@ public class ContactController {
 
   @PutMapping("/{id}/handled")
   @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
-  public ContactResponse markHandled(@PathVariable Long id, @RequestBody HandleRequest req) {
+  public ContactResponse markHandled(@PathVariable Long id, @RequestBody HandleRequest req, Authentication authentication) {
     boolean handled = req.handled() != null && req.handled();
-    return ContactResponse.from(service.markHandled(id, handled, req.adminNote()));
+    // Spring Security puts the JWT subject (username) in the principal.
+    String actorUsername = authentication != null ? authentication.getName() : null;
+    return ContactResponse.from(service.markHandled(id, handled, req.adminNote(), actorUsername));
   }
 
   @DeleteMapping("/{id}")

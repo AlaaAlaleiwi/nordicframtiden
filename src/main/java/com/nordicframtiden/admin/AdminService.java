@@ -46,6 +46,9 @@ public class AdminService {
     private final ChatPushSubscriptionRepository chatPushSubscriptionRepo;
     private final StaffShiftRepository staffShiftRepo;
     private final AvailabilityRequestRepository availabilityRequestRepo;
+    private final com.nordicframtiden.documents.ProfileDocumentRepository profileDocumentRepo;
+    private final com.nordicframtiden.chat.ChatAttachmentRepository chatAttachmentRepo;
+    private final com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshotRepo;
 
     public AdminService(AppUserRepository repo,
                        AdminProfileRepository adminProfileRepo,
@@ -59,7 +62,10 @@ public class AdminService {
                        CallHistoryRepository callHistoryRepo,
                        ChatPushSubscriptionRepository chatPushSubscriptionRepo,
                        StaffShiftRepository staffShiftRepo,
-                       AvailabilityRequestRepository availabilityRequestRepo) {
+                       AvailabilityRequestRepository availabilityRequestRepo,
+                       com.nordicframtiden.documents.ProfileDocumentRepository profileDocumentRepo,
+                       com.nordicframtiden.chat.ChatAttachmentRepository chatAttachmentRepo,
+                       com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshotRepo) {
         this.repo = repo;
         this.adminProfileRepo = adminProfileRepo;
         this.userProfileRepo = userProfileRepo;
@@ -73,6 +79,9 @@ public class AdminService {
         this.chatPushSubscriptionRepo = chatPushSubscriptionRepo;
         this.staffShiftRepo = staffShiftRepo;
         this.availabilityRequestRepo = availabilityRequestRepo;
+        this.profileDocumentRepo = profileDocumentRepo;
+        this.chatAttachmentRepo = chatAttachmentRepo;
+        this.payslipSnapshotRepo = payslipSnapshotRepo;
     }
 
     public record AdminRow(
@@ -320,6 +329,10 @@ public class AdminService {
         chatRoomRepo.deleteByCreatedBy(user);
         // Messages sent by this admin in other rooms (e.g. channels).
         chatMessageRepo.deleteBySender(user);
+        // Attachments they uploaded (uploader_id has no FK; deliveries cascade with the attachment).
+        chatAttachmentRepo.deleteByUploaderId(id);
+        // Frozen payslip snapshots (no FK; avoid orphan rows).
+        payslipSnapshotRepo.deleteByUserId(id);
         // Reactions by this user and call history they started.
         chatReactionRepo.deleteByUser(user);
         callHistoryRepo.deleteByCaller(user);

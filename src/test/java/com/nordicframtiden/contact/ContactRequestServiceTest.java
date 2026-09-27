@@ -1,5 +1,8 @@
 package com.nordicframtiden.contact;
 
+import com.nordicframtiden.admin.model.AdminProfileRepository;
+import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.repo.UserProfileRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.mail.MailAuthenticationException;
 
@@ -18,7 +21,8 @@ class ContactRequestServiceTest {
   void contactRequestRemainsSavedWhenNotificationEmailFails() {
     ContactRequestRepository repo = mock(ContactRequestRepository.class);
     ContactNotificationService notifications = mock(ContactNotificationService.class);
-    ContactRequestService service = new ContactRequestService(repo, notifications);
+    ContactRequestService service = new ContactRequestService(repo, notifications,
+        mock(AppUserRepository.class), mock(UserProfileRepository.class), mock(AdminProfileRepository.class));
     ContactRequest saved = new ContactRequest();
 
     when(repo.save(any(ContactRequest.class))).thenReturn(saved);
@@ -38,7 +42,8 @@ class ContactRequestServiceTest {
   void adminUpdateRemainsSavedWhenReplyEmailFails() {
     ContactRequestRepository repo = mock(ContactRequestRepository.class);
     ContactNotificationService notifications = mock(ContactNotificationService.class);
-    ContactRequestService service = new ContactRequestService(repo, notifications);
+    ContactRequestService service = new ContactRequestService(repo, notifications,
+        mock(AppUserRepository.class), mock(UserProfileRepository.class), mock(AdminProfileRepository.class));
     ContactRequest saved = new ContactRequest();
 
     when(repo.findById(42L)).thenReturn(Optional.of(saved));
@@ -46,7 +51,7 @@ class ContactRequestServiceTest {
     doThrow(new MailAuthenticationException("bad credentials"))
         .when(notifications).sendAdminReplyNotification(saved, "We will contact you");
 
-    ContactRequest result = service.markHandled(42L, true, "We will contact you");
+    ContactRequest result = service.markHandled(42L, true, "We will contact you", null);
 
     assertSame(saved, result);
     verify(repo).save(saved);

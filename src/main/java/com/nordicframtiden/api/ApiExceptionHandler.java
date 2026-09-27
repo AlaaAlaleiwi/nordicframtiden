@@ -19,6 +19,12 @@ public class ApiExceptionHandler {
     return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
   }
 
+  /** 409 for rule violations the client should show (e.g. one shift per user per day). */
+  @ExceptionHandler(com.nordicframtiden.pharmacy.ShiftConflictException.class)
+  public ResponseEntity<?> handleShiftConflict(com.nordicframtiden.pharmacy.ShiftConflictException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
+  }
+
   // Return a proper 500 (with a JSON body) for database-level failures so
   // clients never see them disguised as other status codes.
   @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)

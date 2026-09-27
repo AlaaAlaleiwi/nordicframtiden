@@ -70,6 +70,9 @@ public class ScheduleService {
         Pharmacy pharmacy = pharmacyRepo.findById(pharmacyId)
                 .orElseThrow(() -> new IllegalArgumentException("Pharmacy not found"));
 
+        // One shift per user per day: notify and reject the duplicate.
+        assertNoShiftOnSameDay(user.getId(), startAt, endAt, null);
+
         // ✅ get hourlyCost through userService
         BigDecimal hourly = BigDecimal.ZERO;
         try {
@@ -122,6 +125,9 @@ public class ScheduleService {
 
         validateRange(s.getStartAt(), s.getEndAt());
 
+        // One shift per user per day — ignore the shift being moved.
+        assertNoShiftOnSameDay(s.getUser().getId(), s.getStartAt(), s.getEndAt(), id);
+
         if (note != null)
             s.setNote(note);
 
@@ -138,5 +144,30 @@ public class ScheduleService {
             throw new IllegalArgumentException("Start/end required");
         if (!startAt.isBefore(endAt))
             throw new IllegalArgumentException("Invalid time range");
+    }
+
+    /** Stockholm timezone for the "same day" definition. */
+    private static final java.time.ZoneId SCHEDULE_ZONE = java.time.ZoneId.of("Europe/Stockholm");
+
+    /**
+     * Rejects the shift when the user already has another shift whose
+     * [start, end) window intersects the Stockholm calendar day of the new
+     * shift. {@code excludeShiftId} lets an update ignore itself.
+     */
+    private void assertNoShiftOnSameDay(Long userId, OffsetDateTime startAt, OffsetDateTime endAt, Long excludeShiftId) {
+        var dayStart = startAt.atZoneSameInstant(SCHEDULE_ZONE).toLocalDate().atStartOfDay(SCHEDULE_ZONE).toInstant().atOffset(startAt.getOffset());
+        var dayEnd = dayStart.plusDays(1);
+
+        List<ScheduleShift> sameDay = shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(userId, dayEnd, dayStart);
+        // On create (excludeShiftId == null) any same-day shift conflicts;
+        // on update the shift being moved is ignored.
+        boolean conflict = sameDay.stream()
+            .anyMatch(s -> excludeShiftId == null || !java.util.Objects.equals(s.getId(), excludeShiftId));
+        if (conflict) {
+            var day = startAt.atZoneSameInstant(SCHEDULE_ZONE).toLocalDate();
+            throw new ShiftConflictException(
+                "Användaren har redan ett arbetspass den " + day
+                    + ". Endast ett arbetspass per användare och dag är tillåtet.");
+        }
     }
 }

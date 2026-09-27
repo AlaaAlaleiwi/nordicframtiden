@@ -38,10 +38,16 @@ public class UserService {
   private final CallHistoryRepository callHistory;
   private final ChatRoomRepository chatRooms;
   private final ChatMessageRepository chatMessages;
+  // FK-less tables (no FK to app_user, so deletes are never cascaded) that
+  // would otherwise leave orphan rows behind.
+  private final com.nordicframtiden.chat.ChatAttachmentRepository chatAttachments;
+  private final com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshots;
 
   public UserService(AppUserRepository userRepo, UserProfileRepository profileRepo, PasswordEncoder encoder, EmailService emailService,
                      StaffShiftRepository staffShifts, AvailabilityRequestRepository availabilityRequests,
-                     CallHistoryRepository callHistory, ChatRoomRepository chatRooms, ChatMessageRepository chatMessages) {
+                     CallHistoryRepository callHistory, ChatRoomRepository chatRooms, ChatMessageRepository chatMessages,
+                     com.nordicframtiden.chat.ChatAttachmentRepository chatAttachments,
+                     com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshots) {
     this.userRepo = userRepo;
     this.profileRepo = profileRepo;
     this.encoder = encoder;
@@ -51,6 +57,8 @@ public class UserService {
     this.callHistory = callHistory;
     this.chatRooms = chatRooms;
     this.chatMessages = chatMessages;
+    this.chatAttachments = chatAttachments;
+    this.payslipSnapshots = payslipSnapshots;
   }
 
   // ---------- Records ----------
@@ -387,6 +395,10 @@ public class UserService {
     callHistory.deleteByCaller(u);
     chatRooms.deleteByCreatedBy(u);
     chatMessages.deleteBySender(u);
+    // FK-less tables: no FK to app_user, so nothing cascades — clean up or
+    // orphan rows remain (attachments the user uploaded, frozen payslips).
+    chatAttachments.deleteByUploaderId(id);
+    payslipSnapshots.deleteByUserId(id);
 
     profileRepo.findByUserId(id).ifPresent(profileRepo::delete);
     userRepo.delete(u);
