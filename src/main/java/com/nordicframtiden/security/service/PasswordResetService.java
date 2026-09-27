@@ -97,7 +97,7 @@ public class PasswordResetService {
     String email = emailOf(user);
     if (email == null || email.isBlank()) return false;
     String rawToken = tx.execute(status -> createToken(user));
-    emailService.sendWelcomeEmail(email, user.getUsername(), rawToken, TOKEN_TTL_MINUTES);
+    emailService.sendWelcomeEmail(email, fullNameOf(user, user.getUsername()), user.getUsername(), rawToken, TOKEN_TTL_MINUTES);
     return true;
   }
 
@@ -181,6 +181,15 @@ public class PasswordResetService {
     token.setExpiresAt(OffsetDateTime.now().plusMinutes(TOKEN_TTL_MINUTES));
     tokenRepo.save(token);
     return raw;
+  }
+
+  /** Full name from the profile (user or admin), falling back to the given default. */
+  private String fullNameOf(AppUser user, String fallback) {
+    String viaUserProfile = userProfileRepo.findByUserId(user.getId()).map(p -> p.getFullName()).orElse(null);
+    if (viaUserProfile != null && !viaUserProfile.isBlank()) return viaUserProfile;
+    String viaAdminProfile = adminProfileRepo.findByUserId(user.getId()).map(p -> p.getFullName()).orElse(null);
+    if (viaAdminProfile != null && !viaAdminProfile.isBlank()) return viaAdminProfile;
+    return fallback;
   }
 
   private AppUser findByEmail(String email) {

@@ -158,7 +158,7 @@ public class EmailService {
     }
 
     /** Welcome email for newly created accounts: the person sets their own password via the link. */
-    public boolean sendWelcomeEmail(String to, String username, String rawToken, long ttlMinutes) {
+    public boolean sendWelcomeEmail(String to, String fullName, String username, String rawToken, long ttlMinutes) {
         // Same link target as the reset flow — the backend-hosted Swedish page
         // accepts the invite token and lets the person choose a password.
         String baseUrl = publicBaseUrl.trim();
@@ -168,8 +168,9 @@ public class EmailService {
         String link = baseUrl + "/auth/reset-password?token=" + rawToken;
 
         String heading = "Välkommen till Nordic Framtiden";
-        String intro = "Hej " + escapeHtml(username) + ",";
+        String intro = "Hej " + escapeHtml(fullName) + ",";
         String body = "Ditt konto hos <strong>Nordic Framtiden</strong> har skapats. "
+            + "Det här är ditt användarnamn: <strong>" + escapeHtml(username) + "</strong>.<br>"
             + "Klicka på knappen nedan för att välja ett eget lösenord. "
             + "Länken fungerar i <strong>" + ttlMinutes
             + " minuter</strong> och kan bara användas en gång.";
