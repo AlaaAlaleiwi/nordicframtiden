@@ -112,10 +112,14 @@ class ScheduleServiceConflictTest {
 
     @Test
     void updateDoesNotConflictWithItself() {
+        AppUser u = user();
         ScheduleShift existing = org.mockito.Mockito.mock(ScheduleShift.class);
         when(existing.getId()).thenReturn(42L);
-        when(existing.getUser()).thenReturn(user());
+        when(existing.getUser()).thenReturn(u);
+        when(existing.getStartAt()).thenReturn(utc("2026-02-15T10:00:00Z"));
+        when(existing.getEndAt()).thenReturn(utc("2026-02-15T18:00:00Z"));
         when(shiftRepo.findById(42L)).thenReturn(Optional.of(existing));
+        when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
         when(shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(
             org.mockito.ArgumentMatchers.eq(7L), any(), any()))
@@ -130,10 +134,14 @@ class ScheduleServiceConflictTest {
 
     @Test
     void updateRejectsMovingOntoAnotherDaysShift() {
+        AppUser u = user();
         ScheduleShift existing = org.mockito.Mockito.mock(ScheduleShift.class);
-        when(existing.getId()).thenReturn(42L);
-        when(existing.getUser()).thenReturn(user());
+        lenient().when(existing.getId()).thenReturn(42L);
+        when(existing.getUser()).thenReturn(u);
+        when(existing.getStartAt()).thenReturn(utc("2026-03-01T10:00:00Z"));
+        when(existing.getEndAt()).thenReturn(utc("2026-03-01T18:00:00Z"));
         when(shiftRepo.findById(42L)).thenReturn(Optional.of(existing));
+        when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
         when(shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(
             org.mockito.ArgumentMatchers.eq(7L), any(), any()))
