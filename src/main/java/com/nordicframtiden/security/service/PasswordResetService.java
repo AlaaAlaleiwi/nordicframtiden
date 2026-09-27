@@ -7,9 +7,12 @@ import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.PasswordResetTokenRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.settings.EmailService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
@@ -32,6 +35,8 @@ import java.util.Optional;
 @Service
 public class PasswordResetService {
 
+  private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
+
   public static final int TOKEN_TTL_MINUTES = 60;
 
   private final AppUserRepository userRepo;
@@ -40,6 +45,7 @@ public class PasswordResetService {
   private final PasswordResetTokenRepository tokenRepo;
   private final EmailService emailService;
   private final PasswordEncoder encoder;
+  private final TransactionTemplate tx;
   private final SecureRandom random = new SecureRandom();
 
   public PasswordResetService(AppUserRepository userRepo,
@@ -47,34 +53,65 @@ public class PasswordResetService {
                               AdminProfileRepository adminProfileRepo,
                               PasswordResetTokenRepository tokenRepo,
                               EmailService emailService,
-                              PasswordEncoder encoder) {
+                              PasswordEncoder encoder,
+                              TransactionTemplate tx) {
     this.userRepo = userRepo;
     this.userProfileRepo = userProfileRepo;
     this.adminProfileRepo = adminProfileRepo;
     this.tokenRepo = tokenRepo;
     this.emailService = emailService;
     this.encoder = encoder;
+    this.tx = tx;
   }
 
-  /** Self-service request from the login page. Returns false when the email is unknown (caller still answers generically). */
-  @Transactional
+  /**
+   * Self-service request from the login page. Returns false when the email is
+   * unknown or the mail could not be sent (caller still answers generically).
+   * The token is committed first; a mail failure must not roll it back — the
+   * token is simply cleaned up and the failure is logged.
+   */
   public boolean requestReset(String email) {
     if (email == null || email.isBlank()) return false;
     AppUser user = findByEmail(email.trim());
     if (user == null) return false;
-    String rawToken = createToken(user);
-    emailService.sendPasswordResetLink(email.trim(), user.getUsername(), rawToken, TOKEN_TTL_MINUTES);
+    String rawToken = tx.execute(status -> createToken(user));
+    try {
+      emailService.sendPasswordResetLink(email.trim(), user.getUsername(), rawToken, TOKEN_TTL_MINUTES);
+    } catch (RuntimeException e) {
+      log.error("Could not send password reset email to {}: {}", email.trim(), e.toString());
+      tokenRepo.deleteByUserId(user.getId());
+      return false;
+    }
     return true;
   }
 
-  /** Admin-initiated reset: issues a reset-link email. Returns false when the account has no email on file. */
-  @Transactional
+  /**
+   * Welcome invite for a newly created account: sends a link so the person
+   * sets their own password. Returns false when the account has no email on
+   * file; a mail failure propagates so the admin sees a real error instead of
+   * a false "email sent" confirmation.
+   */
+  public boolean sendWelcomeInvite(Long userId) {
+    AppUser user = userRepo.findById(userId)
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+    String email = emailOf(user);
+    if (email == null || email.isBlank()) return false;
+    String rawToken = tx.execute(status -> createToken(user));
+    emailService.sendWelcomeEmail(email, user.getUsername(), rawToken, TOKEN_TTL_MINUTES);
+    return true;
+  }
+
+  /**
+   * Admin-initiated reset: issues a reset-link email. Returns false when the
+   * account has no email on file; a mail failure propagates so the admin sees
+   * an error instead of a false "email sent" confirmation.
+   */
   public boolean adminReset(Long userId) {
     AppUser user = userRepo.findById(userId)
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
     String email = emailOf(user);
     if (email == null || email.isBlank()) return false;
-    String rawToken = createToken(user);
+    String rawToken = tx.execute(status -> createToken(user));
     emailService.sendPasswordResetLink(email, user.getUsername(), rawToken, TOKEN_TTL_MINUTES);
     return true;
   }
@@ -85,28 +122,40 @@ public class PasswordResetService {
     return findValidToken(rawToken) != null;
   }
 
-  /** Consumes a valid token and sets the new password. */
-  @Transactional
+  /**
+   * Consumes a valid token and sets the new password. The password change is
+   * committed atomically with marking the token used; the confirmation email
+   * is sent afterwards, outside the transaction — a mail failure must never
+   * roll back a password the user just chose.
+   */
   public void resetPassword(String rawToken, String newPassword) {
-    PasswordResetToken token = findValidToken(rawToken);
-    if (token == null) {
-      throw new IllegalArgumentException("Ogiltig eller utgången återställningslänk.");
-    }
-    String problem = PasswordPolicy.problemWith(newPassword);
-    if (problem != null) {
-      throw new IllegalArgumentException(problem);
-    }
+    AppUser user = tx.execute(status -> {
+      PasswordResetToken token = findValidToken(rawToken);
+      if (token == null) {
+        throw new IllegalArgumentException("Ogiltig eller utgången återställningslänk.");
+      }
+      String problem = PasswordPolicy.problemWith(newPassword);
+      if (problem != null) {
+        throw new IllegalArgumentException(problem);
+      }
 
-    AppUser user = token.getUser();
-    user.setPasswordHash(encoder.encode(newPassword));
-    userRepo.save(user);
+      AppUser managed = token.getUser();
+      managed.setPasswordHash(encoder.encode(newPassword));
+      userRepo.save(managed);
 
-    token.setUsedAt(OffsetDateTime.now());
-    tokenRepo.save(token);
+      token.setUsedAt(OffsetDateTime.now());
+      tokenRepo.save(token);
+      return managed;
+    });
 
-    String email = emailOf(user);
-    if (email != null && !email.isBlank()) {
-      emailService.sendPasswordResetConfirmation(email, user.getUsername());
+    try {
+      String email = emailOf(user);
+      if (email != null && !email.isBlank()) {
+        emailService.sendPasswordResetConfirmation(email, user.getUsername());
+      }
+    } catch (RuntimeException e) {
+      log.error("Password changed for user {} but the confirmation email could not be sent: {}",
+          user.getUsername(), e.toString());
     }
   }
 

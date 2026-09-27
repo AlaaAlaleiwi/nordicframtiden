@@ -158,6 +158,32 @@ public class EmailService {
         return sendHtml(to, "Återställ ditt lösenord – Nordic Framtiden", html);
     }
 
+    /** Welcome email for newly created accounts: the person sets their own password via the link. */
+    public boolean sendWelcomeEmail(String to, String username, String rawToken, long ttlMinutes) {
+        // Same link target as the reset flow — the backend-hosted Swedish page
+        // accepts the invite token and lets the person choose a password.
+        String baseUrl = publicBaseUrl.trim();
+        if (baseUrl.isBlank()) {
+            baseUrl = "https://nordicframtiden-644311628279.europe-north1.run.app";
+        }
+        String link = baseUrl + "/auth/reset-password?token=" + rawToken;
+
+        String heading = "Välkommen till Nordic Framtiden";
+        String intro = "Hej " + escapeHtml(username) + ",";
+        String body = "Ditt konto hos <strong>Nordic Framtiden</strong> har skapats. "
+            + "Klicka på knappen nedan för att välja ett eget lösenord. "
+            + "Länken fungerar i <strong>" + ttlMinutes
+            + " minuter</strong> och kan bara användas en gång.";
+        String cta = "Skapa ditt lösenord";
+        String fallback = "Fungerar knappen inte? Kopiera länken nedan och klistra in den i din webbläsare:";
+        String ignore = "Har du inte förväntat dig det här mejlet kan du lugnt ignorera det – "
+            + "kontakta din administratör om något ser fel ut.";
+        String signature = "Med vänliga hälsningar,<br><strong>Nordic Framtiden</strong>";
+
+        String html = resetEmailTemplate(heading, intro, body, link, cta, fallback, ignore, signature);
+        return sendHtml(to, "Välkommen till Nordic Framtiden – skapa ditt lösenord", html);
+    }
+
     /** Confirmation email sent after a password has been changed. */
     public boolean sendPasswordResetConfirmation(String to, String username) {
         String heading = "Ditt lösenord har uppdaterats";

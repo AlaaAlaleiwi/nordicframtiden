@@ -11,6 +11,10 @@ import java.util.Properties;
 @Configuration
 public class MailSenderConfig {
 
+    /** Defaults to true (Gmail SMTP requires STARTTLS); set MAIL_STARTTLS_ENABLE=false for plain-text dev sinks. */
+    @org.springframework.beans.factory.annotation.Value("${spring.mail.properties.mail.smtp.starttls.enable:${MAIL_STARTTLS_ENABLE:true}}")
+    private String starttlsEnable;
+
     @Bean
     public JavaMailSender javaMailSender(AppSettingsService appSettingsService) {
         Map<String, String> mail = appSettingsService.getMailRuntimeSettings();
@@ -28,8 +32,8 @@ public class MailSenderConfig {
 
         Properties props = new Properties();
         props.put("mail.smtp.auth", Boolean.toString(!username.isBlank() && !password.isBlank()));
-        props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.starttls.required", "true");
+        props.put("mail.smtp.starttls.enable", starttlsEnable);
+        props.put("mail.smtp.starttls.required", starttlsEnable);
         props.put("mail.transport.protocol", "smtp");
         sender.setJavaMailProperties(props);
 

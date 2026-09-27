@@ -165,10 +165,12 @@ public class UserManagementController {
         .toList();
   }
 
-  // ✅ STAFF/ADMIN can create users (your UI does)
+  // ✅ STAFF/ADMIN can create users (your UI does).
+  // The person gets a welcome email and chooses their own password via the
+  // link — no clear-text password is returned or emailed.
   @PostMapping
   @PreAuthorize("hasRole('ADMIN') or (hasAuthority('PERM_PEOPLE') and #role == T(com.nordicframtiden.security.model.Role).USER)")
-  public UserResponse create(@RequestParam Role role, @RequestBody CreateUserRequest req) {
+  public ResponseEntity<?> create(@RequestParam Role role, @RequestBody CreateUserRequest req) {
     boolean enabled = req.enabled() == null || req.enabled();
 
     var created = userService.createWithProfile(
@@ -184,7 +186,12 @@ public class UserManagementController {
         req.permissions() // ✅ new
     );
 
-    return toResponse(created, created.password());
+    boolean invited = passwordResetService.sendWelcomeInvite(created.id());
+    if (!invited) {
+      return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+          "error", "Kontot har skapats, men ingen välkomstmejl kunde skickas. Skicka en återställningslänk manuellt."));
+    }
+    return ResponseEntity.ok(toResponse(created, null));
   }
 
   // ✅ STAFF/ADMIN can update

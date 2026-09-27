@@ -139,8 +139,10 @@ public class AuthController {
     public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
         try {
             passwordResetService.requestReset(request.email());
-        } catch (RuntimeException ignored) {
-            // Never leak whether the account exists.
+        } catch (RuntimeException e) {
+            // Never leak whether the account exists — but log why the mail failed.
+            org.slf4j.LoggerFactory.getLogger(AuthController.class)
+                .error("Password reset request failed (mail not sent): {}", e.toString());
         }
         return ResponseEntity.ok(Map.of("message",
             "Om mejladressen är registrerad har ett mejl med återställningslänk skickats."));

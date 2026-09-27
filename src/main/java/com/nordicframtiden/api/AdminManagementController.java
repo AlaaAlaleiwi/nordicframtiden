@@ -112,7 +112,7 @@ public class AdminManagementController {
     }
 
     @PostMapping("/create")
-    public AdminResponse create(@RequestBody CreateAdminRequest req) {
+    public ResponseEntity<?> create(@RequestBody CreateAdminRequest req) {
         boolean enabled = req.enabled() == null || req.enabled();
 
         var created = adminService.createAdminWithProfile(
@@ -122,15 +122,23 @@ public class AdminManagementController {
                 req.phone()
         );
 
-        return new AdminResponse(
+        // The person sets their own password via the welcome-email link —
+        // no clear-text password is returned or emailed.
+        boolean invited = passwordResetService.sendWelcomeInvite(created.id());
+        if (!invited) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "error", "Kontot har skapats, men ingen välkomstmejl kunde skickas. Skicka en återställningslänk manuellt."));
+        }
+
+        return ResponseEntity.ok(new AdminResponse(
                 created.id(),
                 created.username(),
                 created.enabled(),
                 created.fullName(),
                 created.email(),
                 created.phone(),
-                created.password()
-        );
+                null
+        ));
     }
 
     @PutMapping("/{id}")
@@ -156,10 +164,15 @@ public class AdminManagementController {
     }
 
     @PostMapping("/{id}/invite")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void resendInvite(@PathVariable Long id,
-                             @RequestBody(required = false) UpdateAdminRequest ignored) {
-        adminService.resendAdminInvite(id);
+    public ResponseEntity<?> resendInvite(@PathVariable Long id,
+                                          @RequestBody(required = false) UpdateAdminRequest ignored) {
+        boolean sent = adminService.resendAdminInvite(id);
+        if (!sent) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", "Adminen har ingen registrerad mejladress."));
+        }
+        return ResponseEntity.ok(Map.of("message",
+            "Välkomstmejl skickat. Adminen väljer ett nytt lösenord via länken."));
     }
     @GetMapping("/stats")
   public AdminStats stats() {

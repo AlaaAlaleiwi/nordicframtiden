@@ -13,6 +13,7 @@ import com.nordicframtiden.availability.AvailabilityRequestRepository;
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.service.PasswordResetService;
 import com.nordicframtiden.settings.EmailService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -32,6 +33,7 @@ public class AdminService {
     private final AdminProfileRepository adminProfileRepo;
     private final PasswordEncoder encoder;
     private final EmailService emailService;
+    private final PasswordResetService passwordResetService;
 
     // Repositories holding references to app_user that lack ON DELETE CASCADE.
     // They must be cleaned before the user row can be removed.
@@ -47,6 +49,7 @@ public class AdminService {
                        AdminProfileRepository adminProfileRepo,
                        PasswordEncoder encoder,
                        EmailService emailService,
+                       PasswordResetService passwordResetService,
                        ChatMessageRepository chatMessageRepo,
                        ChatReactionRepository chatReactionRepo,
                        ChatRoomRepository chatRoomRepo,
@@ -58,6 +61,7 @@ public class AdminService {
         this.adminProfileRepo = adminProfileRepo;
         this.encoder = encoder;
         this.emailService = emailService;
+        this.passwordResetService = passwordResetService;
         this.chatMessageRepo = chatMessageRepo;
         this.chatReactionRepo = chatReactionRepo;
         this.chatRoomRepo = chatRoomRepo;
@@ -113,7 +117,8 @@ public class AdminService {
         if (adminProfileRepo.existsByPhone(phone))
             throw new IllegalArgumentException("Phone already exists");
 
-        // 1️⃣ Generate username
+        // 1️⃣ Generate username. The password is an unusable random value —
+        // the person sets their own via the welcome-email invite link.
         String username = generateUniqueUsername(fullName);
         String password = generatePassword();
 
@@ -142,7 +147,7 @@ public class AdminService {
                 fullName,
                 email,
                 phone,
-                password);
+                null);
     }
 
     /* =========================
@@ -206,28 +211,8 @@ public class AdminService {
     }
 
     /* =========================
-       RESEND INVITE (temporary password by email)
+       RESEND INVITE (set-password link by email)
        ========================= */
-    @Transactional
-    public void resendAdminInvite(Long id) {
-        AppUser user = repo.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        if (user.getRoles() == null || !user.getRoles().contains(Role.ADMIN)) {
-            throw new IllegalArgumentException("User is not an admin");
-        }
-
-        AdminProfile profile = adminProfileRepo.findByUserId(id)
-                .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
-        if (profile.getEmail() == null || profile.getEmail().isBlank()) {
-            throw new IllegalArgumentException("Admin has no email address");
-        }
-
-        String rawPassword = generatePassword();
-        user.setPasswordHash(encoder.encode(rawPassword));
-        repo.save(user);
-
-        emailService.sendPasswordResetEmail(profile.getEmail(), user.getUsername(), rawPassword);
-    }
 
     /* =========================
        HELPERS
@@ -272,27 +257,9 @@ public class AdminService {
     }
 
     @Transactional
-    public AdminRow resetAdminPassword(Long id) {
-        AppUser user = repo.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-
-        String rawPassword = generatePassword();
-        user.setPasswordHash(encoder.encode(rawPassword));
-        repo.save(user);
-
-        AdminProfile profile = adminProfileRepo.findByUserId(user.getId()).orElse(null);
-        if (profile != null && profile.getEmail() != null && !profile.getEmail().isBlank()) {
-            emailService.sendPasswordResetEmail(profile.getEmail(), user.getUsername(), rawPassword);
-        }
-
-        return new AdminRow(
-                user.getId(),
-                user.getUsername(),
-                user.isEnabled(),
-                profile != null ? profile.getFullName() : null,
-                profile != null ? profile.getEmail() : null,
-                profile != null ? profile.getPhone() : null,
-                rawPassword);
+    /** Re-sends the welcome invite so the admin can set their own password. */
+    public boolean resendAdminInvite(Long id) {
+        return passwordResetService.sendWelcomeInvite(id);
     }
 
     /* =========================
