@@ -230,34 +230,67 @@ public class AdminService {
         if (enabled != null) user.setEnabled(enabled);
         repo.save(user);
 
-        AdminProfile profile = adminProfileRepo.findByUserId(id)
+        // Dual-role accounts have no AdminProfile: their profile lives in the
+        // user profile (same convention as listAdminsDetailed/getDetailedUser).
+        AdminProfile profile = adminProfileRepo.findByUserId(id).orElse(null);
+        if (profile != null) {
+            if (fullName != null && !fullName.isBlank()) profile.setFullName(fullName.trim());
+
+            if (email != null && !email.isBlank() && !email.equalsIgnoreCase(profile.getEmail())) {
+                if (adminProfileRepo.existsByEmail(email)) {
+                    throw new IllegalArgumentException("Email already exists");
+                }
+                profile.setEmail(email.trim());
+            }
+
+            if (phone != null && !phone.isBlank() && !phone.equals(profile.getPhone())) {
+                if (adminProfileRepo.existsByPhone(phone)) {
+                    throw new IllegalArgumentException("Phone already exists");
+                }
+                profile.setPhone(phone.trim());
+            }
+
+            adminProfileRepo.save(profile);
+
+            return new AdminRow(
+                    user.getId(),
+                    user.getUsername(),
+                    user.isEnabled(),
+                    profile.getFullName(),
+                    profile.getEmail(),
+                    profile.getPhone(),
+                    null);
+        }
+
+        com.nordicframtiden.security.model.UserProfile userProfile =
+            userProfileRepo.findByUserId(id)
                 .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
 
-        if (fullName != null && !fullName.isBlank()) profile.setFullName(fullName.trim());
+        if (fullName != null && !fullName.isBlank()) userProfile.setFullName(fullName.trim());
 
-        if (email != null && !email.isBlank() && !email.equalsIgnoreCase(profile.getEmail())) {
-            if (adminProfileRepo.existsByEmail(email)) {
+        if (email != null && !email.isBlank() && !email.equalsIgnoreCase(userProfile.getEmail())) {
+            if (userProfileRepo.existsByEmail(email)) {
                 throw new IllegalArgumentException("Email already exists");
             }
-            profile.setEmail(email.trim());
+            userProfile.setEmail(email.trim());
         }
 
-        if (phone != null && !phone.isBlank() && !phone.equals(profile.getPhone())) {
-            if (adminProfileRepo.existsByPhone(phone)) {
+        if (phone != null && !phone.isBlank() && !phone.equals(userProfile.getPhone())) {
+            if (userProfileRepo.existsByPhone(phone)) {
                 throw new IllegalArgumentException("Phone already exists");
             }
-            profile.setPhone(phone.trim());
+            userProfile.setPhone(phone.trim());
         }
 
-        adminProfileRepo.save(profile);
+        userProfileRepo.save(userProfile);
 
         return new AdminRow(
                 user.getId(),
                 user.getUsername(),
                 user.isEnabled(),
-                profile.getFullName(),
-                profile.getEmail(),
-                profile.getPhone(),
+                userProfile.getFullName(),
+                userProfile.getEmail(),
+                userProfile.getPhone(),
                 null);
     }
 
@@ -295,15 +328,29 @@ public class AdminService {
     public AdminRow getDetailedUser(String username) {
         AppUser user = repo.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        AdminProfile profile = adminProfileRepo.findByUserId(user.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+        // Dual-role accounts (pharmacist/staff promoted to admin) keep their
+        // user profile — fall back to it instead of failing with
+        // "Profile not found" (same convention as listAdminsDetailed).
+        AdminProfile profile = adminProfileRepo.findByUserId(user.getId()).orElse(null);
+        if (profile != null) {
+            return new AdminRow(
+                    user.getId(),
+                    user.getUsername(),
+                    user.isEnabled(),
+                    profile.getFullName(),
+                    profile.getEmail(),
+                    profile.getPhone(),
+                    null);
+        }
+        com.nordicframtiden.security.model.UserProfile userProfile =
+            userProfileRepo.findByUserId(user.getId()).orElse(null);
         return new AdminRow(
                 user.getId(),
                 user.getUsername(),
                 user.isEnabled(),
-                profile.getFullName(),
-                profile.getEmail(),
-                profile.getPhone(),
+                userProfile != null ? userProfile.getFullName() : null,
+                userProfile != null ? userProfile.getEmail() : null,
+                userProfile != null ? userProfile.getPhone() : null,
                 null);
     }
 

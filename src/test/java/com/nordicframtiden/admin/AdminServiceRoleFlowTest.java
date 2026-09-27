@@ -166,4 +166,72 @@ class AdminServiceRoleFlowTest {
 
         verify(repo).save(any(AppUser.class));
     }
+
+    // ---------- /api/admins/me for promoted (dual-role) accounts ----------
+
+    private com.nordicframtiden.security.model.UserProfile userProfile(String fullName, String email, String phone) {
+        com.nordicframtiden.security.model.UserProfile profile = new com.nordicframtiden.security.model.UserProfile();
+        profile.setFullName(fullName);
+        profile.setEmail(email);
+        profile.setPhone(phone);
+        return profile;
+    }
+
+    @Test
+    void adminMeFallsBackToUserProfileWhenNoAdminProfileExists() {
+        // A pharmacist promoted to admin: /api/admins/me used to throw
+        // "Profile not found" because only AdminProfile was consulted.
+        AppUser dualRole = userWithRoles(Role.USER, Role.ADMIN);
+        when(repo.findByUsername("testuser")).thenReturn(Optional.of(dualRole));
+        when(adminProfileRepo.findByUserId(7L)).thenReturn(Optional.empty());
+        when(userProfileRepo.findByUserId(7L))
+            .thenReturn(Optional.of(userProfile("Anna Andersson", "anna@example.com", "0701234567")));
+
+        AdminService.AdminRow row = service.getDetailedUser("testuser");
+
+        assertEquals("Anna Andersson", row.fullName());
+        assertEquals("anna@example.com", row.email());
+        assertEquals("0701234567", row.phone());
+    }
+
+    @Test
+    void pureAdminWithAdminProfileStillUsesIt() {
+        // The fallback must not change behaviour for accounts that have an
+        // AdminProfile (admins created directly).
+        AppUser pureAdmin = userWithRoles(Role.ADMIN);
+        when(repo.findByUsername("testuser")).thenReturn(Optional.of(pureAdmin));
+
+        com.nordicframtiden.admin.model.AdminProfile adminProfile = new com.nordicframtiden.admin.model.AdminProfile();
+        adminProfile.setFullName("Pure Admin");
+        adminProfile.setEmail("pure@example.com");
+        adminProfile.setPhone("0709876543");
+        when(adminProfileRepo.findByUserId(7L)).thenReturn(Optional.of(adminProfile));
+
+        AdminService.AdminRow row = service.getDetailedUser("testuser");
+
+        assertEquals("Pure Admin", row.fullName());
+        assertEquals("pure@example.com", row.email());
+        verify(userProfileRepo, never()).findByUserId(7L);
+    }
+
+    @Test
+    void updatingAdminWithoutAdminProfileUpdatesTheUserProfile() {
+        // Admin settings save for a promoted account: used to fail with
+        // "Profile not found"; must update the user profile instead.
+        AppUser dualRole = userWithRoles(Role.USER, Role.ADMIN);
+        when(repo.findById(7L)).thenReturn(Optional.of(dualRole));
+        when(adminProfileRepo.findByUserId(7L)).thenReturn(Optional.empty());
+        when(userProfileRepo.findByUserId(7L)).thenReturn(
+            Optional.of(userProfile("Anna Andersson", "anna@example.com", "0701234567")));
+        when(userProfileRepo.existsByEmail("ny@example.com")).thenReturn(false);
+        when(userProfileRepo.existsByPhone("0709999999")).thenReturn(false);
+
+        AdminService.AdminRow row = service.updateAdminWithProfile(
+            7L, null, "Anna B Andersson", "ny@example.com", "0709999999", null);
+
+        assertEquals("Anna B Andersson", row.fullName());
+        assertEquals("ny@example.com", row.email());
+        assertEquals("0709999999", row.phone());
+        verify(userProfileRepo).save(any(com.nordicframtiden.security.model.UserProfile.class));
+    }
 }
