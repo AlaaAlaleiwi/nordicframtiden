@@ -133,12 +133,11 @@ public class EmailService {
      * the self-service reset (login page) and admin-initiated resets.
      */
     public boolean sendPasswordResetLink(String to, String username, String rawToken, long ttlMinutes) {
-        // The link opens the self-hosted Swedish reset page on this backend.
-        // Override with APP_PUBLIC_BASE_URL if the API is reachable under a
-        // different public address.
+        // The link opens the React app's reset page on the public domain.
+        // Override with APP_PUBLIC_BASE_URL if needed (e.g. testing).
         String baseUrl = publicBaseUrl.trim();
         if (baseUrl.isBlank()) {
-            baseUrl = "https://nordicframtiden-644311628279.europe-north1.run.app";
+            baseUrl = "https://nordicframtiden.se";
         }
         String link = baseUrl + "/auth/reset-password?token=" + rawToken;
 
@@ -164,7 +163,7 @@ public class EmailService {
         // accepts the invite token and lets the person choose a password.
         String baseUrl = publicBaseUrl.trim();
         if (baseUrl.isBlank()) {
-            baseUrl = "https://nordicframtiden-644311628279.europe-north1.run.app";
+            baseUrl = "https://nordicframtiden.se";
         }
         String link = baseUrl + "/auth/reset-password?token=" + rawToken;
 

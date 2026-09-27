@@ -81,7 +81,12 @@ public class SecurityConfig {
                 "https://nordicframtiden-frontend-644311628279.europe-north1.run.app",
                 "https://nordicframtiden-frontend-mbtjtlqpcq-lz.a.run.app",
                 "https://nordicframtiden.se",
-                "https://www.nordicframtiden.se"));
+                "https://www.nordicframtiden.se",
+                // This backend's own public origin: the self-hosted reset page
+                // (auth/reset-password) posts back to itself, and behind Google
+                // Frontend the TLS is terminated so the same-origin request
+                // still carries a browser Origin header that must be allowed.
+                "https://nordicframtiden-644311628279.europe-north1.run.app"));
 
         // ✅ IMPORTANT: include PATCH (preflight is failing because PATCH isn't allowed)
         config.setAllowedMethods(List.of(
