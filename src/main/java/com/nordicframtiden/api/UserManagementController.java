@@ -44,7 +44,8 @@ public class UserManagementController {
       String countyCode,
       String municipalityCode,
       Set<Permission> permissions, // ✅ NEW
-      String password // only on create/reset
+      String password, // only on create/reset
+      boolean admin // dual-role flag: this account also holds the ADMIN role
   ) {}
 
   public record CreateUserRequest(
@@ -97,7 +98,8 @@ public class UserManagementController {
         u.countyCode(),
         u.municipalityCode(),
         u.permissions(),
-        password
+        password,
+        u.admin()
     );
   }
 
@@ -114,7 +116,8 @@ public class UserManagementController {
         u.countyCode(),
         u.municipalityCode(),
         u.permissions(),
-        password
+        password,
+        u.admin()
     );
   }
 

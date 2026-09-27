@@ -13,6 +13,7 @@ import com.nordicframtiden.availability.AvailabilityRequestRepository;
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.security.service.PasswordResetService;
 import com.nordicframtiden.settings.EmailService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -31,6 +32,7 @@ public class AdminService {
 
     private final AppUserRepository repo;
     private final AdminProfileRepository adminProfileRepo;
+    private final UserProfileRepository userProfileRepo;
     private final PasswordEncoder encoder;
     private final EmailService emailService;
     private final PasswordResetService passwordResetService;
@@ -47,6 +49,7 @@ public class AdminService {
 
     public AdminService(AppUserRepository repo,
                        AdminProfileRepository adminProfileRepo,
+                       UserProfileRepository userProfileRepo,
                        PasswordEncoder encoder,
                        EmailService emailService,
                        PasswordResetService passwordResetService,
@@ -59,6 +62,7 @@ public class AdminService {
                        AvailabilityRequestRepository availabilityRequestRepo) {
         this.repo = repo;
         this.adminProfileRepo = adminProfileRepo;
+        this.userProfileRepo = userProfileRepo;
         this.encoder = encoder;
         this.emailService = emailService;
         this.passwordResetService = passwordResetService;
@@ -89,16 +93,54 @@ public class AdminService {
         return repo.findAllAdmins().stream()
                 .map(u -> {
                     AdminProfile p = adminProfileRepo.findByUserId(u.getId()).orElse(null);
+                    if (p != null) {
+                        return new AdminRow(
+                                u.getId(),
+                                u.getUsername(),
+                                u.isEnabled(),
+                                p.getFullName(),
+                                p.getEmail(),
+                                p.getPhone(),
+                                null);
+                    }
+                    // Dual-role accounts (e.g. pharmacist + admin) have a user
+                    // profile instead of an admin profile.
+                    com.nordicframtiden.security.model.UserProfile up =
+                        userProfileRepo.findByUserId(u.getId()).orElse(null);
                     return new AdminRow(
                             u.getId(),
                             u.getUsername(),
                             u.isEnabled(),
-                            p != null ? p.getFullName() : null,
-                            p != null ? p.getEmail() : null,
-                            p != null ? p.getPhone() : null,
+                            up != null ? up.getFullName() : null,
+                            up != null ? up.getEmail() : null,
+                            up != null ? up.getPhone() : null,
                             null);
                 })
                 .toList();
+    }
+
+    /* =========================
+       PROMOTE / DEMOTE (dual roles)
+       Grants or removes the ADMIN role on an existing USER/STAFF account.
+       The account keeps its original role, so one login holds both.
+       ========================= */
+    @Transactional
+    public void setAdminRole(Long userId, boolean admin) {
+        AppUser user = repo.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        boolean isAdmin = user.getRoles() != null && user.getRoles().contains(Role.ADMIN);
+        if (admin == isAdmin) return; // idempotent
+        if (admin) {
+            user.getRoles().add(Role.ADMIN);
+        } else {
+            // Never strip the last remaining admin — the workspace needs one.
+            long adminCount = repo.countByRole(Role.ADMIN);
+            if (adminCount <= 1) {
+                throw new IllegalStateException("Kan inte ta bort den sista administratören.");
+            }
+            user.getRoles().remove(Role.ADMIN);
+        }
+        repo.save(user);
     }
 
     /* =========================

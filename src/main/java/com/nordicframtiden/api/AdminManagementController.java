@@ -183,6 +183,27 @@ public class AdminManagementController {
     );
   }
 
+    /**
+     * Grants the ADMIN role to an existing USER/STAFF account (dual role).
+     * The account keeps its original role and appears in both listings.
+     */
+    @PostMapping("/{id}/make-admin")
+    public ResponseEntity<?> makeAdmin(@PathVariable Long id) {
+        adminService.setAdminRole(id, true);
+        return ResponseEntity.ok(Map.of("message", "Administratörsbehörighet tilldelad."));
+    }
+
+    /** Removes the ADMIN role again; the account keeps USER/STAFF. */
+    @PostMapping("/{id}/remove-admin")
+    public ResponseEntity<?> removeAdmin(@PathVariable Long id) {
+        try {
+            adminService.setAdminRole(id, false);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        }
+        return ResponseEntity.ok(Map.of("message", "Administratörsbehörighet borttagen."));
+    }
+
     @PostMapping("/{id}/reset-password")
     public ResponseEntity<?> resetPassword(@PathVariable Long id) {
         boolean sent = passwordResetService.adminReset(id);

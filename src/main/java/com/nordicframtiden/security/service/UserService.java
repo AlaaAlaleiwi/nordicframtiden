@@ -67,7 +67,8 @@ public class UserService {
       String countyCode,
       String municipalityCode,
       Set<Permission> permissions,
-      String password
+      String password,
+      boolean admin
   ) {}
 
   public record DetailedUser(
@@ -81,7 +82,8 @@ public class UserService {
       Integer yearOfBirth,
       String countyCode,
       String municipalityCode,
-      Set<Permission> permissions
+      Set<Permission> permissions,
+      boolean admin
   ) {}
 
   // ---------- Validation helpers ----------
@@ -133,7 +135,8 @@ public class UserService {
         profile != null ? profile.getYearOfBirth() : null,
         profile != null ? profile.getCountyCode() : null,
         profile != null ? profile.getMunicipalityCode() : null,
-        safePerms(u.getPermissions())
+        safePerms(u.getPermissions()),
+        u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
     );
   }
 
@@ -152,7 +155,8 @@ public class UserService {
               profile != null ? profile.getYearOfBirth() : null,
               profile != null ? profile.getCountyCode() : null,
               profile != null ? profile.getMunicipalityCode() : null,
-              safePerms(u.getPermissions())
+              safePerms(u.getPermissions()),
+              u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
           );
         })
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -173,7 +177,8 @@ public class UserService {
           p != null ? p.getCountyCode() : null,
           p != null ? p.getMunicipalityCode() : null,
           safePerms(u.getPermissions()),
-          null
+          null,
+          u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
       );
     }).toList();
   }
@@ -249,7 +254,8 @@ public class UserService {
         p.getCountyCode(),
         p.getMunicipalityCode(),
         safePerms(u.getPermissions()),
-        rawPassword
+        rawPassword,
+        u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
     );
   }
 
@@ -329,7 +335,8 @@ public class UserService {
         p.getCountyCode(),
         p.getMunicipalityCode(),
         safePerms(u.getPermissions()),
-        null
+        null,
+        u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
     );
   }
 
@@ -418,7 +425,8 @@ public class UserService {
         p != null ? p.getCountyCode() : null,
         p != null ? p.getMunicipalityCode() : null,
         safePerms(u.getPermissions()),
-        rawPassword
+        rawPassword,
+        u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
     );
   }
 
