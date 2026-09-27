@@ -15,6 +15,14 @@ public class MailSenderConfig {
     @org.springframework.beans.factory.annotation.Value("${spring.mail.properties.mail.smtp.starttls.enable:${MAIL_STARTTLS_ENABLE:true}}")
     private String starttlsEnable;
 
+    /**
+     * Implicit SSL (SMTPS). Blank means auto-detect: port 465 (e.g. One.com's
+     * send.one.com) speaks TLS from the first byte, while 587 uses STARTTLS.
+     * Override with MAIL_SMTP_SSL_ENABLE=true/false if a provider deviates.
+     */
+    @org.springframework.beans.factory.annotation.Value("${MAIL_SMTP_SSL_ENABLE:}")
+    private String sslEnable;
+
     @Bean
     public JavaMailSender javaMailSender(AppSettingsService appSettingsService) {
         Map<String, String> mail = appSettingsService.getMailRuntimeSettings();
@@ -30,10 +38,16 @@ public class MailSenderConfig {
         sender.setUsername(username.isBlank() ? null : username);
         sender.setPassword(password.isBlank() ? null : password);
 
+        boolean ssl = sslEnable == null || sslEnable.isBlank()
+            ? "465".equals(port.trim())
+            : Boolean.parseBoolean(sslEnable);
+
         Properties props = new Properties();
         props.put("mail.smtp.auth", Boolean.toString(!username.isBlank() && !password.isBlank()));
-        props.put("mail.smtp.starttls.enable", starttlsEnable);
-        props.put("mail.smtp.starttls.required", starttlsEnable);
+        props.put("mail.smtp.ssl.enable", Boolean.toString(ssl));
+        // STARTTLS only applies to plaintext connections; never enable both.
+        props.put("mail.smtp.starttls.enable", ssl ? "false" : starttlsEnable);
+        props.put("mail.smtp.starttls.required", ssl ? "false" : starttlsEnable);
         props.put("mail.transport.protocol", "smtp");
         sender.setJavaMailProperties(props);
 
