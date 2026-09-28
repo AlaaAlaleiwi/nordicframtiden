@@ -12,6 +12,8 @@ import com.nordicframtiden.security.model.UserProfile;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.settings.EmailService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -51,6 +53,8 @@ public class UserService {
   private final com.nordicframtiden.chat.ChatPushSubscriptionRepository pushSubscriptions;
   private final com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokens;
   private final com.nordicframtiden.documents.ProfileDocumentRepository profileDocuments;
+  /** Nullable: unit tests exercise the pharmacist path without it. */
+  private final com.nordicframtiden.admin.AdminService adminService;
 
   public UserService(AppUserRepository userRepo, UserProfileRepository profileRepo, PasswordEncoder encoder, EmailService emailService,
                      StaffShiftRepository staffShifts, AvailabilityRequestRepository availabilityRequests,
@@ -62,6 +66,24 @@ public class UserService {
                      com.nordicframtiden.chat.ChatPushSubscriptionRepository pushSubscriptions,
                      com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokens,
                      com.nordicframtiden.documents.ProfileDocumentRepository profileDocuments) {
+    this(userRepo, profileRepo, encoder, emailService, staffShifts, availabilityRequests,
+        callHistory, chatRooms, chatMessages, chatAttachments, payslipSnapshots,
+        chatRoomMembers, chatReactions, pushSubscriptions, resetTokens, profileDocuments, null);
+  }
+
+  /** Production constructor: ADMIN targets delegate to the admin cleanup path. */
+  @Autowired
+  public UserService(AppUserRepository userRepo, UserProfileRepository profileRepo, PasswordEncoder encoder, EmailService emailService,
+                     StaffShiftRepository staffShifts, AvailabilityRequestRepository availabilityRequests,
+                     CallHistoryRepository callHistory, ChatRoomRepository chatRooms, ChatMessageRepository chatMessages,
+                     com.nordicframtiden.chat.ChatAttachmentRepository chatAttachments,
+                     com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshots,
+                     com.nordicframtiden.chat.ChatRoomMemberRepository chatRoomMembers,
+                     com.nordicframtiden.chat.ChatReactionRepository chatReactions,
+                     com.nordicframtiden.chat.ChatPushSubscriptionRepository pushSubscriptions,
+                     com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokens,
+                     com.nordicframtiden.documents.ProfileDocumentRepository profileDocuments,
+                     @org.springframework.context.annotation.Lazy com.nordicframtiden.admin.AdminService adminService) {
     this.userRepo = userRepo;
     this.profileRepo = profileRepo;
     this.encoder = encoder;
@@ -78,6 +100,7 @@ public class UserService {
     this.pushSubscriptions = pushSubscriptions;
     this.resetTokens = resetTokens;
     this.profileDocuments = profileDocuments;
+    this.adminService = adminService;
   }
 
   // ---------- Records ----------
@@ -417,8 +440,17 @@ public class UserService {
   public void deleteUser(Long id) {
     AppUser u = userRepo.findById(id).orElseThrow(() -> new IllegalArgumentException("User not found"));
 
+    // ADMIN accounts (including dual-role ADMIN+USER shown in People) need
+    // the admin cleanup path — user_profile, admin_profile, self-delete and
+    // last-admin guards. Delegating keeps one complete deletion routine.
     if (u.getRoles() != null && u.getRoles().contains(Role.ADMIN)) {
-      throw new IllegalArgumentException("Cannot delete ADMIN from /api/users");
+      if (adminService == null) {
+        // No injected collaborator (unit tests of the pharmacist path): the
+        // old explicit refusal keeps those tests meaningful.
+        throw new IllegalArgumentException("Cannot delete ADMIN from /api/users");
+      }
+      adminService.deleteAdmin(id);
+      return;
     }
 
     // Delete dependent rows whose foreign keys lack ON DELETE CASCADE,

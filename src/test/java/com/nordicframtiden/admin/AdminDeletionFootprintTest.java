@@ -16,6 +16,7 @@ import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.service.PasswordResetService;
 import com.nordicframtiden.settings.EmailService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -83,6 +84,18 @@ class AdminDeletionFootprintTest {
         admin.setUsername("admin");
         admin.setRoles(new java.util.HashSet<>(java.util.Set.of(Role.ADMIN)));
         lenient().when(repo.findById(1L)).thenReturn(Optional.of(admin));
+        // Two admins exist and the caller is someone else: deletions allowed.
+        lenient().when(repo.countByRole(Role.ADMIN)).thenReturn(2L);
+        lenient().when(userProfileRepo.findByUserId(1L)).thenReturn(Optional.empty());
+        // Authenticated caller is a different admin (not self-delete).
+        org.springframework.security.core.context.SecurityContextHolder.getContext()
+            .setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                "other-admin", "n/a", java.util.List.of()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -131,6 +144,26 @@ class AdminDeletionFootprintTest {
 
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
             () -> service.deleteAdmin(5L));
+        org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).delete(any());
+    }
+
+    @Test
+    void deleting_your_own_admin_account_is_rejected() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext()
+            .setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                "admin", "n/a", java.util.List.of()));
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> service.deleteAdmin(1L));
+        org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).delete(any());
+    }
+
+    @Test
+    void deleting_the_last_admin_is_rejected() {
+        when(repo.countByRole(Role.ADMIN)).thenReturn(1L);
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> service.deleteAdmin(1L));
         org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).delete(any());
     }
 }

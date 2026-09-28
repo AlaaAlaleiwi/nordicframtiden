@@ -61,6 +61,7 @@ class UserDeletionGdprFootprintTest {
   @Mock private PayslipSnapshotRepository payslipSnapshotRepo;
   @Mock private PasswordResetTokenRepository resetTokenRepo;
   @Mock private ProfileDocumentRepository profileDocumentRepo;
+  @Mock private com.nordicframtiden.admin.AdminService adminService;
 
   private UserService service;
   private AppUser pharmacist;
@@ -71,7 +72,7 @@ class UserDeletionGdprFootprintTest {
         staffShiftRepo, availabilityRequestRepo, callHistoryRepo, chatRoomRepo,
         chatMessageRepo, chatAttachmentRepo, payslipSnapshotRepo,
         chatRoomMemberRepo, chatReactionRepo, pushSubscriptionRepo,
-        resetTokenRepo, profileDocumentRepo);
+        resetTokenRepo, profileDocumentRepo, adminService);
 
     pharmacist = new AppUser();
     pharmacist.setId(7L);
@@ -111,6 +112,35 @@ class UserDeletionGdprFootprintTest {
     when(repo.findById(999L)).thenReturn(Optional.empty());
     org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
         () -> service.deleteUser(999L));
+    org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).delete(org.mockito.ArgumentMatchers.any());
+  }
+
+  @Test
+  void deleting_a_dual_role_admin_from_users_routes_through_the_admin_cleanup_path() {
+    // A pharmacist promoted to ADMIN (dual-role) still appears in People;
+    // deleting them there must run the complete admin cleanup, not fail.
+    pharmacist.setRoles(new java.util.HashSet<>(java.util.Set.of(Role.ADMIN, Role.USER)));
+
+    service.deleteUser(7L);
+
+    org.mockito.Mockito.verify(adminService).deleteAdmin(7L);
+    // The pharmacist-path repos must not be touched directly — one routine.
+    org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).delete(org.mockito.ArgumentMatchers.any());
+    org.mockito.Mockito.verify(staffShiftRepo, org.mockito.Mockito.never())
+        .deleteByUser(org.mockito.ArgumentMatchers.any());
+  }
+
+  @Test
+  void deleting_an_admin_without_the_admin_path_available_still_refuses() {
+    UserService bare = new UserService(repo, userProfileRepo, encoder, emailService,
+        staffShiftRepo, availabilityRequestRepo, callHistoryRepo, chatRoomRepo,
+        chatMessageRepo, chatAttachmentRepo, payslipSnapshotRepo,
+        chatRoomMemberRepo, chatReactionRepo, pushSubscriptionRepo,
+        resetTokenRepo, profileDocumentRepo, null);
+    pharmacist.setRoles(new java.util.HashSet<>(java.util.Set.of(Role.ADMIN)));
+
+    org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+        () -> bare.deleteUser(7L));
     org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).delete(org.mockito.ArgumentMatchers.any());
   }
 }

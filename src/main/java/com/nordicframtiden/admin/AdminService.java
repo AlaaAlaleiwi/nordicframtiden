@@ -378,6 +378,20 @@ public class AdminService {
             throw new IllegalArgumentException("User is not an admin");
         }
 
+        // Safety rails: never let the workspace lock itself out.
+        String currentUsername = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication() != null
+                ? org.springframework.security.core.context.SecurityContextHolder.getContext()
+                      .getAuthentication().getName()
+                : null;
+        if (currentUsername != null && currentUsername.equals(user.getUsername())) {
+            throw new IllegalArgumentException("You cannot delete your own admin account");
+        }
+        long admins = repo.countByRole(Role.ADMIN);
+        if (admins <= 1) {
+            throw new IllegalArgumentException("Cannot delete the last remaining admin account");
+        }
+
         // Delete rooms created by this admin; messages inside cascade with the room.
         chatRoomRepo.deleteByCreatedBy(user);
         // Messages sent by this admin in other rooms (e.g. channels).
@@ -400,6 +414,10 @@ public class AdminService {
         // The admin's own profile documents (user_id cascades server-side;
         // delete explicitly so the payload is purged, not orphaned).
         profileDocumentRepo.deleteByUserId(id);
+
+        // Dual-role accounts (ADMIN + USER) keep a pharmacist user_profile for
+        // email/phone; remove it too, or the FK below blocks the delete.
+        userProfileRepo.findByUserId(id).ifPresent(userProfileRepo::delete);
 
         adminProfileRepo.findByUserId(id).ifPresent(adminProfileRepo::delete);
         repo.delete(user);
