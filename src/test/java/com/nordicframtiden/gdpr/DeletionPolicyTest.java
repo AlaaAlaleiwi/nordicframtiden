@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 /**
  * TDD for the deletion policy: while a deletion request is open, existing
@@ -50,6 +51,20 @@ class DeletionPolicyTest {
     policy = new DeletionPolicy(
         requests, scheduleShifts, staffShifts, Clock.fixed(NOW, ZoneId.of("Europe/Stockholm")));
     openRequest = new GdprDeletionRequest(7L, "pharm", "anna@example.com", "moving abroad");
+  }
+
+  @Test
+  void springCanConstructThePolicyBean() {
+    try (var context = new AnnotationConfigApplicationContext()) {
+      context.registerBean(GdprDeletionRequestRepository.class, () -> requests);
+      context.registerBean(ScheduleShiftRepository.class, () -> scheduleShifts);
+      context.registerBean(StaffShiftRepository.class, () -> staffShifts);
+      context.register(DeletionPolicy.class);
+
+      context.refresh();
+
+      assertThat(context.getBean(DeletionPolicy.class)).isNotNull();
+    }
   }
 
   private void withOpenRequest(boolean open) {
