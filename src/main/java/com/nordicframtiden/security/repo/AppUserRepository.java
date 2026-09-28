@@ -11,6 +11,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface AppUserRepository extends JpaRepository<AppUser, Long> {
+  @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+  @Query("select u from AppUser u where u.id = :id")
+  Optional<AppUser> lockForPayroll(@Param("id") Long id);
+
   Optional<AppUser> findByUsername(String username);
 
   boolean existsByUsername(String username);

@@ -48,6 +48,13 @@ public class PayslipSnapshot {
   @Column(name = "updated_at", nullable = false)
   private Instant updatedAt = Instant.now();
 
+  @jakarta.persistence.OneToMany
+  @jakarta.persistence.JoinColumn(name = "snapshot_id", insertable = false, updatable = false)
+  @jakarta.persistence.OrderBy("revision ASC")
+  private java.util.List<PayslipRevision> revisions = new java.util.ArrayList<>();
+
+  public java.util.List<PayslipRevision> getRevisions() { return revisions; }
+
   public Long getId() { return id; }
   public Long getUserId() { return userId; }
   public void setUserId(Long userId) { this.userId = userId; }

@@ -1,150 +1,149 @@
 package com.nordicframtiden.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nordicframtiden.service.model.NetSalaryResponse;
-import com.nordicframtiden.service.model.PayslipSnapshot;
-import com.nordicframtiden.service.model.PayslipSnapshotRepository;
+import com.nordicframtiden.security.model.AppUser;
+import com.nordicframtiden.security.repo.AppUserRepository;
+import com.nordicframtiden.service.model.*;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.math.BigDecimal;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import org.springframework.test.util.ReflectionTestUtils;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 class PayslipFreezeServiceTest {
+  final PayslipSnapshotRepository snapshots = mock(PayslipSnapshotRepository.class);
+  final PayslipRevisionRepository revisions = mock(PayslipRevisionRepository.class);
+  final PayrollService payroll = mock(PayrollService.class);
+  final SalaryAdjustmentService adjustments = mock(SalaryAdjustmentService.class);
+  final AppUserRepository users = mock(AppUserRepository.class);
+  final ObjectMapper json = new ObjectMapper();
+  final PayslipFreezeService service = new PayslipFreezeService(snapshots, revisions, payroll, adjustments, users, json);
+  PayslipSnapshot snapshot;
+  NetSalaryResponse original = new NetSalaryResponse(7L, "2026-08", bd("200"), bd("100"), bd("20000"),
+      2026, "0180", 30, 1, bd("6000"), bd("14000"));
+  static BigDecimal bd(String v) { return new BigDecimal(v); }
 
-  private static final int ENDED_YEAR = 2026;
-  private static final int ENDED_MONTH = 8;      // August 2026 is over
-  private static final int CURRENT_MONTH = 9;    // September is running
-
-  private final PayslipSnapshotRepository snapshots = mock(PayslipSnapshotRepository.class);
-  private final PayrollService payrollService = mock(PayrollService.class);
-  private final ObjectMapper objectMapper = new ObjectMapper();
-  private PayslipFreezeService service;
-
-  @BeforeEach
-  void setUp() {
-    service = new PayslipFreezeService(snapshots, payrollService, objectMapper);
+  @BeforeEach void setup() {
+    when(users.lockForPayroll(7L)).thenReturn(Optional.of(new AppUser()));
+    when(revisions.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
   }
-
-  private NetSalaryResponse payslip(BigDecimal hourlyCost) {
-    return new NetSalaryResponse(
-        7L, "2026-08", hourlyCost, BigDecimal.valueOf(100), BigDecimal.valueOf(20000),
-        2026, "0180", 30, 1, BigDecimal.valueOf(6000), BigDecimal.valueOf(14000),
-        BigDecimal.valueOf(6000), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(240000),
-        java.util.List.of(), BigDecimal.valueOf(20000), BigDecimal.ZERO, BigDecimal.ZERO);
+  void frozen(String role) throws Exception {
+    snapshot = new PayslipSnapshot();
+    ReflectionTestUtils.setField(snapshot, "id", 42L);
+    snapshot.setPayload(json.writeValueAsString(original));
+    when(snapshots.findByUserIdAndYearAndMonthAndRole(7L, 2026, 8, role)).thenReturn(Optional.of(snapshot));
+    var first = new PayslipRevision(42L, 1, "original-operator", "Finalized", null, snapshot.getPayload());
+    when(revisions.findTopBySnapshotIdOrderByRevisionDesc(42L)).thenReturn(Optional.of(first));
+    when(revisions.findBySnapshotIdOrderByRevisionAsc(42L)).thenReturn(List.of(first));
   }
-
-  @Test
-  void currentMonthIsAlwaysLive() {
-    when(payrollService.netSalaryForUserMonth(7L, ENDED_YEAR, CURRENT_MONTH))
-        .thenReturn(payslip(BigDecimal.valueOf(1500)));
-
-    NetSalaryResponse result = service.resolve(7L, ENDED_YEAR, CURRENT_MONTH, "USER");
-
-    assertThat(result.hourlyCost()).isEqualByComparingTo(BigDecimal.valueOf(1500));
-    verify(snapshots, never()).findByUserIdAndYearAndMonthAndRole(any(), any(), any(), any());
-    verify(snapshots, never()).save(any());
+  PayslipFreezeService.Correction correction(int revision, String reason, String gross, String tax) {
+    return new PayslipFreezeService.Correction(revision, reason, bd(gross), bd("0"), bd(tax), bd("0"), bd("0"));
   }
-
-  @Test
-  void endedMonthFreezesOnFirstReadAndIsServedVerbatimAfterwards() throws Exception {
-    NetSalaryResponse computed = payslip(BigDecimal.valueOf(1500));
-    when(payrollService.netSalaryForUserMonth(7L, ENDED_YEAR, ENDED_MONTH)).thenReturn(computed);
-    when(snapshots.findByUserIdAndYearAndMonthAndRole(7L, ENDED_YEAR, ENDED_MONTH, "USER"))
-        .thenReturn(Optional.empty())
-        .thenAnswer(invocation -> {
-          PayslipSnapshot stored = new PayslipSnapshot();
-          stored.setUserId(7L);
-          stored.setYear(ENDED_YEAR);
-          stored.setMonth(ENDED_MONTH);
-          stored.setRole("USER");
-          // Deliberately a different hourly cost than live computation would
-          // produce (rate changed afterwards): history must come back frozen.
-          stored.setPayload(objectMapper.writeValueAsString(payslip(BigDecimal.valueOf(999))));
-          return Optional.of(stored);
-        });
-
-    NetSalaryResponse firstRead = service.resolve(7L, ENDED_YEAR, ENDED_MONTH, "USER");
-    assertThat(firstRead.hourlyCost()).isEqualByComparingTo(BigDecimal.valueOf(1500));
-    verify(snapshots).save(any(PayslipSnapshot.class));
-
-    // The stored snapshot deliberately differs (rate changed afterwards):
-    // history must come back exactly as frozen, without recalculating.
-    NetSalaryResponse secondRead = service.resolve(7L, ENDED_YEAR, ENDED_MONTH, "USER");
-    assertThat(secondRead.hourlyCost()).isEqualByComparingTo(BigDecimal.valueOf(999));
-    verify(payrollService, times(1)).netSalaryForUserMonth(7L, ENDED_YEAR, ENDED_MONTH);
+  @Test void pastReadRemainsDraftUntilExplicitlyFinalized() {
+    when(payroll.netSalaryForUserMonth(7L, 2026, 8)).thenReturn(original);
+    assertThat(service.resolve(7L, 2026, 8, "USER")).isEqualTo(original);
+    verify(snapshots, never()).saveAndFlush(any());
+    verifyNoInteractions(revisions);
   }
-
-  @Test
-  void savingAdjustmentsForEndedMonthPreservesHistoricalHourlyCost() throws Exception {
-    PayslipSnapshot stored = new PayslipSnapshot();
-    stored.setUserId(7L);
-    stored.setYear(ENDED_YEAR);
-    stored.setMonth(ENDED_MONTH);
-    stored.setRole("USER");
-    stored.setPayload(objectMapper.writeValueAsString(payslip(BigDecimal.valueOf(100))));
-
-    when(snapshots.findByUserIdAndYearAndMonthAndRole(7L, ENDED_YEAR, ENDED_MONTH, "USER"))
-        .thenReturn(Optional.of(stored));
-    when(payrollService.netSalaryForUserMonth(7L, ENDED_YEAR, ENDED_MONTH))
-        .thenReturn(payslip(BigDecimal.valueOf(1500)));
-
-    NetSalaryResponse saved = service.afterAdjustmentsSaved(7L, ENDED_YEAR, ENDED_MONTH, "USER");
-
-    assertThat(saved.hourlyCost()).isEqualByComparingTo(BigDecimal.valueOf(100));
-    verify(snapshots).save(any(PayslipSnapshot.class));
+  @Test void explicitFinalizationPersistsBothRecordsAndActor() {
+    when(payroll.netSalaryForUserMonth(7L, 2026, 8)).thenReturn(original);
+    when(snapshots.saveAndFlush(any())).thenAnswer(i -> {
+      PayslipSnapshot s = i.getArgument(0); ReflectionTestUtils.setField(s, "id", 42L); return s;
+    });
+    var result = service.finalizePayslip(7L, 2026, 8, "USER", "admin@example.se");
+    assertThat(result.revision()).isEqualTo(1);
+    assertThat(result.actor()).isEqualTo("admin@example.se");
+    assertThat(result.payslip()).isEqualTo(original);
+    verify(users).lockForPayroll(7L);
+    verify(revisions).saveAndFlush(any());
   }
-
-  @Test
-  void savingAdjustmentsForCurrentMonthKeepsLiveHourlyCost() {
-    when(payrollService.netSalaryForUserMonth(7L, ENDED_YEAR, CURRENT_MONTH))
-        .thenReturn(payslip(BigDecimal.valueOf(1500)));
-
-    NetSalaryResponse saved = service.afterAdjustmentsSaved(7L, ENDED_YEAR, CURRENT_MONTH, "USER");
-
-    assertThat(saved.hourlyCost()).isEqualByComparingTo(BigDecimal.valueOf(1500));
-    verify(snapshots).save(any(PayslipSnapshot.class));
+  @Test void failedFinalizationDoesNotReportSuccess() {
+    when(payroll.netSalaryForUserMonth(7L, 2026, 8)).thenReturn(original);
+    when(snapshots.saveAndFlush(any())).thenThrow(new IllegalStateException("database unavailable"));
+    assertThatThrownBy(() -> service.finalizePayslip(7L, 2026, 8, "USER", "admin")).isInstanceOf(IllegalStateException.class);
+    verifyNoInteractions(revisions);
   }
-
-  @Test
-  void corruptSnapshotIsRecomputedAndRefrozen() {
-    PayslipSnapshot corrupt = new PayslipSnapshot();
-    corrupt.setUserId(7L);
-    corrupt.setYear(ENDED_YEAR);
-    corrupt.setMonth(ENDED_MONTH);
-    corrupt.setRole("USER");
-    corrupt.setPayload("this is not json");
-
-    when(snapshots.findByUserIdAndYearAndMonthAndRole(7L, ENDED_YEAR, ENDED_MONTH, "USER"))
-        .thenReturn(Optional.of(corrupt));
-    when(payrollService.netSalaryForUserMonth(7L, ENDED_YEAR, ENDED_MONTH))
-        .thenReturn(payslip(BigDecimal.valueOf(1500)));
-
-    NetSalaryResponse result = service.resolve(7L, ENDED_YEAR, ENDED_MONTH, "USER");
-
-    assertThat(result.hourlyCost()).isEqualByComparingTo(BigDecimal.valueOf(1500));
-    verify(snapshots).save(any(PayslipSnapshot.class));
+  @Test void finalizationRetryAndReadNeverRecalculate() throws Exception {
+    frozen("USER");
+    assertThat(service.finalizePayslip(7L, 2026, 8, "USER", "another").actor()).isEqualTo("original-operator");
+    assertThat(service.resolve(7L, 2026, 8, "USER")).isEqualTo(original);
+    verifyNoInteractions(payroll, adjustments);
+    verify(snapshots, never()).saveAndFlush(any());
   }
-
-  @Test
-  void staffRoleUsesStaffPayrollForEndedMonth() {
-    when(payrollService.netSalaryForStaffMonth(7L, ENDED_YEAR, ENDED_MONTH))
-        .thenReturn(payslip(BigDecimal.valueOf(1200)));
-    when(snapshots.findByUserIdAndYearAndMonthAndRole(7L, ENDED_YEAR, ENDED_MONTH, "STAFF"))
-        .thenReturn(Optional.empty());
-
-    service.resolve(7L, ENDED_YEAR, ENDED_MONTH, "STAFF");
-
-    verify(payrollService).netSalaryForStaffMonth(7L, ENDED_YEAR, ENDED_MONTH);
-    verify(payrollService, never()).netSalaryForUserMonth(eq(7L), any(Integer.class), any(Integer.class));
+  @Test void correctionPreservesOriginalAndInputsAndRecordsSignedChanges() throws Exception {
+    frozen("STAFF");
+    String originalPayload = snapshot.getPayload();
+    var change = new PayslipFreezeService.Correction(1, "Missing agreed allowance", bd("100"), bd("50"), bd("30"), bd("15"), bd("25"));
+    var result = service.correct(7L, 2026, 8, "STAFF", change, "payroll-admin");
+    assertThat(result.revision()).isEqualTo(2);
+    assertThat(result.actor()).isEqualTo("payroll-admin");
+    assertThat(result.createdAt()).isNotNull();
+    assertThat(result.changes()).isEqualTo(change);
+    assertThat(result.payslip().grossSalary()).isEqualByComparingTo("20150");
+    assertThat(result.payslip().preliminaryTax()).isEqualByComparingTo("6045");
+    assertThat(result.payslip().netSalary()).isEqualByComparingTo("14130");
+    assertThat(result.payslip().hourlyCost()).isEqualTo(original.hourlyCost());
+    assertThat(result.payslip().totalHours()).isEqualTo(original.totalHours());
+    assertThat(result.payslip().baseHourlySalary()).isEqualTo(original.baseHourlySalary());
+    assertThat(result.payslip().tableNumber()).isEqualTo(original.tableNumber());
+    assertThat(result.payslip().adjustments()).hasSize(3);
+    assertThat(snapshot.getPayload()).isEqualTo(originalPayload);
+    verifyNoInteractions(payroll, adjustments);
+    verify(snapshots, never()).saveAndFlush(any());
+  }
+  @Test void negativeCorrectionAndLatestResolutionWork() throws Exception {
+    frozen("USER");
+    var corrected = service.correct(7L, 2026, 8, "USER", correction(1, "Remove duplicate", "-100", "-30"), "admin");
+    var row = new PayslipRevision(42L, 2, "admin", corrected.reason(), null, json.writeValueAsString(corrected.payslip()));
+    when(revisions.findTopBySnapshotIdOrderByRevisionDesc(42L)).thenReturn(Optional.of(row));
+    assertThat(service.resolve(7L, 2026, 8, "USER").netSalary()).isEqualByComparingTo("13930");
+    assertThat(service.history(7L, 2026, 8, "USER").getFirst().payslip()).isEqualTo(original);
+    verifyNoInteractions(payroll);
+  }
+  @Test void staleRevisionIsRejectedWithoutWriting() throws Exception {
+    frozen("USER");
+    assertThatThrownBy(() -> service.correct(7L, 2026, 8, "USER", correction(0, "Fix", "100", "30"), "admin"))
+        .isInstanceOf(PayslipConflictException.class);
+    verify(revisions, never()).saveAndFlush(any());
+  }
+  @Test void rejectsMissingReasonPrecisionNoopAndNegativeTotals() throws Exception {
+    frozen("USER");
+    for (var change : List.of(correction(1, " ", "100", "30"), correction(1, "Fix", "0.001", "0"),
+        correction(1, "Fix", "0", "0"), correction(1, "Fix", "-30000", "0"))) {
+      assertThatThrownBy(() -> service.correct(7L, 2026, 8, "USER", change, "admin")).isInstanceOf(IllegalArgumentException.class);
+    }
+    verify(revisions, never()).saveAndFlush(any());
+  }
+  @Test void draftCannotBeCorrected() {
+    assertThatThrownBy(() -> service.correct(7L, 2026, 8, "USER", correction(1, "Fix", "100", "30"), "admin"))
+        .isInstanceOf(PayslipConflictException.class);
+  }
+  @Test void legacyAdjustmentWriteIsRejectedForEitherRoleBeforeDeletingAdjustments() throws Exception {
+    frozen("STAFF");
+    assertThatThrownBy(() -> service.saveAdjustments(7L, 2026, 8, "USER", List.of())).isInstanceOf(PayslipConflictException.class);
+    verifyNoInteractions(adjustments, payroll);
+  }
+  @Test void draftSaveDoesNotFinalize() {
+    when(payroll.netSalaryForUserMonth(7L, 2026, 8)).thenReturn(original);
+    assertThat(service.saveAdjustments(7L, 2026, 8, "USER", List.of())).isEqualTo(original);
+    verify(adjustments).replace(7L, 2026, 8, List.of());
+    verify(snapshots, never()).saveAndFlush(any());
+  }
+  @Test void finalizedPreviewIsRejected() throws Exception {
+    frozen("USER");
+    assertThatThrownBy(() -> service.preview(7L, 2026, 8, "USER", new PayrollService.PreviewRequest(null, null)))
+        .isInstanceOf(PayslipConflictException.class);
+    verifyNoInteractions(payroll);
+  }
+  @Test void corruptHistoryFailsClosedWithoutRecomputation() throws Exception {
+    frozen("USER");
+    when(revisions.findTopBySnapshotIdOrderByRevisionDesc(42L)).thenReturn(Optional.of(new PayslipRevision(42L, 1, "old", "old", null, "broken")));
+    assertThatThrownBy(() -> service.resolve(7L, 2026, 8, "USER")).isInstanceOf(PayslipConflictException.class);
+    verifyNoInteractions(payroll);
+    verify(revisions, never()).saveAndFlush(any());
   }
 }

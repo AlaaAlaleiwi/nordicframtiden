@@ -96,10 +96,7 @@ public class SalariesController {
   @PutMapping("/payslip/adjustments")
   @PreAuthorize(CAN_MANAGE_SALARIES)
   public NetSalaryResponse saveAdjustments(@RequestParam Long userId,@RequestParam int year,@RequestParam int month,@RequestParam(defaultValue="USER") String role,@RequestBody AdjustmentRequest request){
-    adjustmentService.replace(userId,year,month,request.adjustments()==null?List.of():request.adjustments());
-    // Past months are frozen: an explicit save refreshes the stored snapshot
-    // while preserving the historical hourly cost.
-    return payslipFreezeService.afterAdjustmentsSaved(userId,year,month,role);
+    return payslipFreezeService.saveAdjustments(userId, year, month, role, request.adjustments());
   }
   /** Live preview: computes the payslip with unsaved hourly cost / adjustment overrides. Nothing is persisted. */
   @PostMapping("/payslip/preview")
@@ -113,8 +110,30 @@ public class SalariesController {
   ) {
     PayrollService.PreviewRequest body =
         request == null ? new PayrollService.PreviewRequest(null, null) : request;
-    return payrollService.previewForUserMonth(userId, year, month, role, body.hourlyCost(), body.adjustments());
+    return payslipFreezeService.preview(userId, year, month, role, body);
   }
+  @GetMapping("/payslip/revisions")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
+  public List<PayslipFreezeService.Revision> revisions(@RequestParam Long userId, @RequestParam int year,
+      @RequestParam int month, @RequestParam(defaultValue = "USER") String role) {
+    return payslipFreezeService.history(userId, year, month, role);
+  }
+
+  @PostMapping("/payslip/finalize")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
+  public PayslipFreezeService.Revision finalizePayslip(@RequestParam Long userId, @RequestParam int year,
+      @RequestParam int month, @RequestParam(defaultValue = "USER") String role, Authentication auth) {
+    return payslipFreezeService.finalizePayslip(userId, year, month, role, auth.getName());
+  }
+
+  @PostMapping("/payslip/corrections")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
+  public PayslipFreezeService.Revision correctPayslip(@RequestParam Long userId, @RequestParam int year,
+      @RequestParam int month, @RequestParam(defaultValue = "USER") String role,
+      @RequestBody PayslipFreezeService.Correction correction, Authentication auth) {
+    return payslipFreezeService.correct(userId, year, month, role, correction, auth.getName());
+  }
+
   public record MonthRow(int year, int month, double totalHours, BigDecimal totalCost) {}
   public record DayRow(String dayKey, OffsetDateTime from, OffsetDateTime to, double totalHours, BigDecimal totalCost) {}
 // ===== Payslip DTO (what frontend expects) =====
@@ -131,8 +150,7 @@ public class SalariesController {
       @RequestParam int year,
       @RequestParam int month
   ) {
-    // Ended months are served frozen from the snapshot; only the current
-    // month recalculates live when the hourly cost changes.
+    // Finalized months resolve to their latest immutable revision.
     return payslipFreezeService.resolve(userId, year, month, "USER");
   }
   /* ===================== PAYSLIP (ME) ===================== */
