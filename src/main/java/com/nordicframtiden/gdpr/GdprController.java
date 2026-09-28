@@ -10,12 +10,18 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * GDPR self-service endpoints:
- * - GET  /api/gdpr/me              — current consent states (Art. 7).
- * - PUT  /api/gdpr/me/consents     — grant/withdraw a consent (Art. 7(3)).
- * - GET  /api/gdpr/me/consents     — full consent history (accountability).
- * - GET  /api/gdpr/me/export       — machine-readable data export (Art. 15/20).
- * - DELETE /api/gdpr/me            — erasure (Art. 17): deletes the account
- *                                    and every referencing row.
+ * - GET  /api/gdpr/me                        — current consent states (Art. 7).
+ * - PUT  /api/gdpr/me/consents               — grant/withdraw a consent (Art. 7(3)).
+ * - GET  /api/gdpr/me/consents               — full consent history (accountability).
+ * - GET  /api/gdpr/me/export                 — machine-readable data export (Art. 15/20).
+ * - POST /api/gdpr/me/export/email           — queue the export as an email (24h).
+ * - POST /api/gdpr/me/deletion-request       — file an erasure request (Art. 17) for
+ *                                              admin review; executed on a scheduled
+ *                                              date by the nightly job (deleting a
+ *                                              user also deletes the schedule and
+ *                                              payment history tied to it, so it is
+ *                                              never immediate).
+ * - GET  /api/gdpr/deletion-requests         — ADMIN review queue.
  * Admins may act on behalf of a user via /api/gdpr/users/{id}/... .
  */
 @RestController
@@ -182,13 +188,5 @@ public class GdprController {
   public GdprService.GdprExport exportFor(@PathVariable Long id, Authentication auth) {
     gdprService.recordConsent(id, auth.getName(), GdprConsent.TYPE_ACCESS_REQUEST, true);
     return gdprService.export(id);
-  }
-
-  @DeleteMapping("/users/{id}")
-  @PreAuthorize("hasRole('ADMIN')")
-  public ResponseEntity<Map<String, Object>> eraseFor(@PathVariable Long id, Authentication auth) {
-    gdprService.recordConsent(id, auth.getName(), GdprConsent.TYPE_ERASURE_REQUEST, true);
-    userService.deleteUser(id);
-    return ResponseEntity.ok(Map.of("erased", true, "userId", id));
   }
 }
