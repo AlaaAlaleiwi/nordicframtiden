@@ -50,7 +50,8 @@ public class AuthController {
 
     record RefreshRequest(String refreshToken) {}
 
-    record MeResponse(String username, String fullName, List<String> roles, List<String> perms) {}
+    record MeResponse(Long id, String username, String fullName, List<String> roles, List<String> perms,
+                       Long photoId, String photoUpdatedAt) {}
 
     // ---------- Endpoints ----------
     @PostMapping("/login")
@@ -115,7 +116,11 @@ public class AuthController {
                 .or(() -> adminProfiles.findByUserId(user.getId()).map(profile -> profile.getFullName()))
                 .filter(name -> !name.isBlank())
                 .orElse(username);
-        return ResponseEntity.ok(new MeResponse(username, fullName, roleNames, permNames));
+        Long photoId = user.getPhotoId();
+        String photoUpdatedAt = user.getPhotoUpdatedAt() != null
+                ? String.valueOf(user.getPhotoUpdatedAt().toEpochMilli())
+                : null;
+        return ResponseEntity.ok(new MeResponse(user.getId(), username, fullName, roleNames, permNames, photoId, photoUpdatedAt));
     }
 
     private LoginResponse tokens(AppUser user, List<String> roles, List<String> perms) {
