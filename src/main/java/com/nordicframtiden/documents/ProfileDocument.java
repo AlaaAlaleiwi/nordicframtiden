@@ -52,6 +52,9 @@ public class ProfileDocument {
     @JoinColumn(name = "uploaded_by")
     private AppUser uploadedBy;
 
+    @Column(name = "shared_with_user", nullable = false)
+    private boolean sharedWithUser;
+
     @Column(nullable = false)
     private Instant createdAt;
 
@@ -82,6 +85,9 @@ public class ProfileDocument {
 
     public AppUser getUploadedBy() { return uploadedBy; }
     public void setUploadedBy(AppUser uploadedBy) { this.uploadedBy = uploadedBy; }
+
+    public boolean isSharedWithUser() { return sharedWithUser; }
+    public void setSharedWithUser(boolean sharedWithUser) { this.sharedWithUser = sharedWithUser; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

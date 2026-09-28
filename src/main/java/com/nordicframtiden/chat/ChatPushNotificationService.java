@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ChatPushNotificationService {
@@ -95,6 +96,23 @@ public class ChatPushNotificationService {
         "url", "/chat",
         "type", "channel.deleted");
     subscriptions.findByUserUsernameIn(usernames)
+        .forEach(subscription -> sender.send(subscription.getFirebaseInstallationId(), data));
+  }
+
+  @Transactional(readOnly = true)
+  public void notifyAdminsDocumentUploaded(String employeeName, String fileName, long userId) {
+    Set<String> adminUsernames = users.findAllAdmins().stream()
+        .map(AppUser::getUsername)
+        .collect(Collectors.toSet());
+    if (adminUsernames.isEmpty()) return;
+
+    var data = Map.of(
+        "title", "New employee document",
+        "body", employeeName + " uploaded " + fileName,
+        "url", "/admin/organization/users/" + userId,
+        "type", "document.uploaded",
+        "userId", Long.toString(userId));
+    subscriptions.findByUserUsernameIn(adminUsernames)
         .forEach(subscription -> sender.send(subscription.getFirebaseInstallationId(), data));
   }
 

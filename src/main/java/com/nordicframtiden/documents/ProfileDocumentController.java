@@ -4,6 +4,7 @@ import com.nordicframtiden.security.AccountAuthorization;
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
+import com.nordicframtiden.chat.ChatPushNotificationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -36,17 +37,20 @@ public class ProfileDocumentController {
     private final AppUserRepository users;
     private final UserProfileRepository profiles;
     private final AccountAuthorization authorization;
+    private final ChatPushNotificationService pushNotifications;
 
     public ProfileDocumentController(ProfileDocumentRepository documents,
                                      DocumentEncryptionService encryption,
                                      AppUserRepository users,
                                      UserProfileRepository profiles,
-                                     AccountAuthorization authorization) {
+                                     AccountAuthorization authorization,
+                                     ChatPushNotificationService pushNotifications) {
         this.documents = documents;
         this.encryption = encryption;
         this.users = users;
         this.profiles = profiles;
         this.authorization = authorization;
+        this.pushNotifications = pushNotifications;
     }
 
     // ---------- DTOs ----------
@@ -57,22 +61,32 @@ public class ProfileDocumentController {
         String contentType,
         Long sizeBytes,
         String uploadedByName,
+        Long uploadedByUserId,
+        boolean sharedWithUser,
         String createdAt
     ) {}
+
+    public record VisibilityPayload(boolean sharedWithUser) {}
 
     // ---------- Endpoints ----------
 
     @GetMapping
     @PreAuthorize("isAuthenticated() and @accountAuthorization.canViewDocuments(authentication, #userId)")
-    public List<DocumentDto> list(@PathVariable Long userId) {
+    public List<DocumentDto> list(@PathVariable Long userId, Authentication auth) {
+        AppUser viewer = currentUser(auth);
+        AppUser owner = users.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        boolean ownerView = viewer.getId().equals(userId) && !authorization.canManage(auth, userId);
         return documents.findByUserIdOrderByIdDesc(userId).stream()
+            .filter(d -> owner.getPhotoId() == null || !owner.getPhotoId().equals(d.getId()))
+            .filter(d -> !ownerView || uploadedByOwner(d, userId) || d.isSharedWithUser())
             .map(d -> toDto(d, id -> displayNameFor(id, null)))
             .toList();
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("isAuthenticated() and @accountAuthorization.canManage(authentication, #userId)")
+    @PreAuthorize("isAuthenticated() and (@accountAuthorization.canManage(authentication, #userId) or @accountAuthorization.isOwner(authentication, #userId))")
     public DocumentDto upload(@PathVariable Long userId,
                               Authentication auth,
                               @RequestParam("file") MultipartFile file) throws IOException {
@@ -98,8 +112,16 @@ public class ProfileDocumentController {
         doc.setIv(sealed.iv());
         doc.setData(sealed.ciphertext());
         doc.setUploadedBy(uploader);
+        boolean employeeUpload = uploader.getId().equals(owner.getId());
+        doc.setSharedWithUser(employeeUpload);
 
         ProfileDocument saved = documents.save(doc);
+        if (employeeUpload) {
+            pushNotifications.notifyAdminsDocumentUploaded(
+                displayNameFor(owner.getId(), owner.getUsername()),
+                saved.getFileName(),
+                owner.getId());
+        }
         return toDto(saved, id -> displayNameFor(id, uploader.getUsername()));
     }
 
@@ -109,6 +131,7 @@ public class ProfileDocumentController {
                                            Authentication auth) {
         requireView(userId, auth);
         ProfileDocument doc = owned(userId, documentId);
+        requireDocumentVisible(doc, userId, auth);
         byte[] plaintext = encryption.decrypt(doc.getIv(), doc.getData());
         return ResponseEntity.ok()
             .header("Content-Disposition",
@@ -120,11 +143,28 @@ public class ProfileDocumentController {
     @DeleteMapping("/{documentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Transactional
-    @PreAuthorize("isAuthenticated() and @accountAuthorization.canManage(authentication, #userId)")
-    public void delete(@PathVariable Long userId, @PathVariable Long documentId) {
+    @PreAuthorize("isAuthenticated()")
+    public void delete(@PathVariable Long userId, @PathVariable Long documentId, Authentication auth) {
+        ProfileDocument doc = owned(userId, documentId);
+        boolean manager = authorization.canManage(auth, userId);
+        boolean ownerDeletingOwnUpload = authorization.isOwner(auth, userId) && uploadedByOwner(doc, userId);
+        if (!manager && !ownerDeletingOwnUpload) {
+            throw new org.springframework.security.access.AccessDeniedException("Not allowed");
+        }
         if (documents.deleteByIdAndUserId(documentId, userId) == 0) {
             throw new IllegalArgumentException("Document not found");
         }
+    }
+
+    @PutMapping("/{documentId}/visibility")
+    @PreAuthorize("isAuthenticated() and @accountAuthorization.canManage(authentication, #userId)")
+    public DocumentDto updateVisibility(@PathVariable Long userId,
+                                        @PathVariable Long documentId,
+                                        @RequestBody VisibilityPayload payload) {
+        ProfileDocument doc = owned(userId, documentId);
+        doc.setSharedWithUser(payload.sharedWithUser());
+        ProfileDocument saved = documents.save(doc);
+        return toDto(saved, id -> displayNameFor(id, null));
     }
 
     // ---------- Helpers ----------
@@ -138,6 +178,8 @@ public class ProfileDocumentController {
             doc.getUploadedBy() != null
                 ? nameResolver.apply(doc.getUploadedBy().getId())
                 : null,
+            doc.getUploadedBy() != null ? doc.getUploadedBy().getId() : null,
+            doc.isSharedWithUser(),
             doc.getCreatedAt() != null ? doc.getCreatedAt().toString() : null
         );
     }
@@ -164,6 +206,16 @@ public class ProfileDocumentController {
         return documents.findById(documentId)
             .filter(d -> d.getUser() != null && userId.equals(d.getUser().getId()))
             .orElseThrow(() -> new IllegalArgumentException("Document not found"));
+    }
+
+    private static boolean uploadedByOwner(ProfileDocument doc, Long userId) {
+        return doc.getUploadedBy() != null && userId.equals(doc.getUploadedBy().getId());
+    }
+
+    private void requireDocumentVisible(ProfileDocument doc, Long userId, Authentication auth) {
+        if (authorization.canManage(auth, userId)) return;
+        if (authorization.isOwner(auth, userId) && (uploadedByOwner(doc, userId) || doc.isSharedWithUser())) return;
+        throw new org.springframework.security.access.AccessDeniedException("Not allowed");
     }
 
     /** Download and list share the canViewDocuments rule; enforce centrally here for download. */

@@ -53,6 +53,15 @@ public class AccountAuthorization {
             .orElse(false);
     }
 
+    public boolean isOwner(Authentication authentication, Long targetUserId) {
+        if (authentication == null || !authentication.isAuthenticated() || targetUserId == null) {
+            return false;
+        }
+        return userRepository.findById(targetUserId)
+            .map(user -> user.getUsername().equals(authentication.getName()))
+            .orElse(false);
+    }
+
     private static boolean hasAuthority(Authentication authentication, String authority) {
         return authentication.getAuthorities().stream()
             .anyMatch(granted -> authority.equals(granted.getAuthority()));
