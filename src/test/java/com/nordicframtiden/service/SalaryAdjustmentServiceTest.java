@@ -10,7 +10,7 @@ import com.nordicframtiden.service.model.SalaryAdjustmentRepository;
 
 class SalaryAdjustmentServiceTest {
   private final SalaryAdjustmentService service =
-      new SalaryAdjustmentService(mock(SalaryAdjustmentRepository.class));
+      new SalaryAdjustmentService(mock(SalaryAdjustmentRepository.class), mock(com.nordicframtiden.service.model.PayslipRevisionRepository.class));
 
   @Test
   void mileageAboveSkatteverketLimitMakesOnlyTheAllowedPartTaxFree() {

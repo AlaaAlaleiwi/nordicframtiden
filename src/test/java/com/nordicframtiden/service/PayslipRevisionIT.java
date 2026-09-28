@@ -31,6 +31,7 @@ import static org.mockito.Mockito.*;
 @ActiveProfiles("test")
 class PayslipRevisionIT {
   @Autowired PayslipFreezeService service;
+  @Autowired SalaryAdjustmentService adjustments;
   @Autowired PayslipSnapshotRepository snapshots;
   @Autowired PayslipRevisionRepository revisions;
   @Autowired AppUserRepository users;
@@ -101,6 +102,19 @@ class PayslipRevisionIT {
       snapshots.deleteByUserId(userId);
     });
     assertThat(revisions.findBySnapshotIdOrderByRevisionAsc(snapshot.getId())).isEmpty();
+  }
+  @Test void oneTimeCorrectionsAffectFutureDraftEstimatesWithoutMutatingOriginalAdjustments() {
+    service.finalizePayslip(userId, 2026, 8, "USER", "first");
+    service.correct(userId, 2026, 8, "USER", new PayslipFreezeService.Correction(1, "Missed bonus",
+        BigDecimal.ZERO, new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("30"), BigDecimal.ZERO), "second");
+    assertThat(adjustments.annualOneTimeTotal(userId, 2026)).isEqualByComparingTo("100");
+    assertThat(adjustments.annualOneTimeTotalExcludingMonth(userId, 2026, 9)).isEqualByComparingTo("100");
+    assertThat(adjustments.annualOneTimeTotalExcludingMonth(userId, 2026, 8)).isZero();
+    assertThat(adjustments.annualOneTimeTotal(userId, 2027)).isZero();
+    assertThat(adjustments.forMonth(userId, 2026, 8)).isEmpty();
+    service.correct(userId, 2026, 8, "USER", new PayslipFreezeService.Correction(2, "Reverse bonus",
+        BigDecimal.ZERO, new BigDecimal("-100"), BigDecimal.ZERO, new BigDecimal("-30"), BigDecimal.ZERO), "third");
+    assertThat(adjustments.annualOneTimeTotal(userId, 2026)).isZero();
   }
   @Test void concurrentCorrectionsHaveExactlyOneWinner() throws Exception {
     service.finalizePayslip(userId, 2026, 8, "USER", "first");
