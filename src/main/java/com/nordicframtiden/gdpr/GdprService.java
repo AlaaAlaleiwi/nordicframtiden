@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -82,6 +83,7 @@ public class GdprService {
   private final ChatRoomMemberRepository chatRoomMembers;
   private final CallHistoryRepository callHistory;
   private final ProfileDocumentRepository profileDocuments;
+  private final GdprExportRequestRepository exportRequests;
   private final UserService userService;
 
   public GdprService(
@@ -98,6 +100,7 @@ public class GdprService {
       ChatRoomMemberRepository chatRoomMembers,
       CallHistoryRepository callHistory,
       ProfileDocumentRepository profileDocuments,
+      GdprExportRequestRepository exportRequests,
       UserService userService
   ) {
     this.userRepo = userRepo;
@@ -113,6 +116,7 @@ public class GdprService {
     this.chatRoomMembers = chatRoomMembers;
     this.callHistory = callHistory;
     this.profileDocuments = profileDocuments;
+    this.exportRequests = exportRequests;
     this.userService = userService;
   }
 
@@ -142,6 +146,41 @@ public class GdprService {
 
   public List<GdprConsent> consentHistory(Long userId) {
     return consentRepo.findByUserIdOrderByCreatedAtDesc(userId);
+  }
+
+  // ---------- Art. 15/20: email delivery of the export ----------
+
+  /**
+   * Queues an email delivery of the data export. The user has confirmed the
+   * request in the client (24h promise); the 03:00 job emails the JSON.
+   * Idempotent: while a PENDING request exists for the user, re-requesting
+   * returns it unchanged instead of queueing duplicates.
+   */
+  @Transactional
+  public GdprExportRequest requestExportByEmail(Long userId) {
+    AppUser user = userRepo.findById(userId)
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+    UserProfile profile = profileRepo.findByUserId(userId)
+        .orElseThrow(() -> new IllegalArgumentException("No profile on file"));
+    String email = profile.getEmail();
+    if (email == null || email.isBlank()) {
+      throw new IllegalArgumentException("No email address on file");
+    }
+    return exportRequests.findByStatusOrderByCreatedAtAsc(GdprExportRequest.STATUS_PENDING).stream()
+        .filter(r -> r.getUserId().equals(userId))
+        .findFirst()
+        .orElseGet(() -> {
+          // The data subject exercised their access right (audit marker).
+          recordConsent(userId, user.getUsername(), GdprConsent.TYPE_ACCESS_REQUEST, true);
+          return exportRequests.save(new GdprExportRequest(userId, user.getUsername(), email.trim()));
+        });
+  }
+
+  /** Latest export request (for status display), or empty when none exists. */
+  @Transactional(readOnly = true)
+  public Optional<GdprExportRequest> latestExportRequest(Long userId) {
+    List<GdprExportRequest> all = exportRequests.findTop20ByUserIdOrderByCreatedAtDesc(userId);
+    return all.isEmpty() ? Optional.empty() : Optional.of(all.get(0));
   }
 
   // ---------- Art. 15/20: data export ----------

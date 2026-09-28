@@ -64,6 +64,7 @@ class GdprExportTest {
   @Mock private ChatRoomMemberRepository chatRoomMembers;
   @Mock private CallHistoryRepository callHistory;
   @Mock private ProfileDocumentRepository profileDocuments;
+  @Mock private GdprExportRequestRepository exportRequests;
   @Mock private UserService userService;
 
   private GdprService service;
@@ -74,7 +75,7 @@ class GdprExportTest {
     service = new GdprService(userRepo, profileRepo, consentRepo, scheduleShifts,
         staffShifts, availabilityRequests, salaryAdjustments, payslipSnapshots,
         chatMessages, chatRooms, chatRoomMembers, callHistory, profileDocuments,
-        userService);
+        exportRequests, userService);
 
     user = new AppUser();
     user.setId(7L);

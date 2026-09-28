@@ -125,6 +125,94 @@ public class EmailService {
     }
 
     // =========================
+    // GDPR data export (Art. 15/20): JSON attachment
+    // =========================
+
+    public boolean sendGdprExportEmail(String to, String displayName, byte[] jsonBytes) {
+        Map<String, String> mail = appSettingsService.getMailSettings();
+        if (!Boolean.parseBoolean(mail.getOrDefault("enabled", "false"))) {
+            return false;
+        }
+
+        String host = mail.getOrDefault("host", "").trim();
+        String from = mail.getOrDefault("from", "").trim();
+        if (host.isBlank() || to == null || to.isBlank()) {
+            return false;
+        }
+
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED, StandardCharsets.UTF_8.name());
+            helper.setFrom(from.isBlank() ? to : from);
+            helper.setTo(to);
+            helper.setSubject("Your data export - Nordic Framtiden");
+            helper.setText("Hello " + displayName + ",\n\n"
+                + "Attached is a copy of the personal data we hold about your account "
+                + "(GDPR articles 15 and 20), as a JSON file.\n\n"
+                + "If you did not request this export, please contact us immediately at "
+                + "gdpr@nordicframtiden.se.\n\n"
+                + "Kind regards,\n"
+                + "Nordic Framtiden",
+                true);
+            helper.addAttachment("nordicframtiden-data-export.json", new org.springframework.core.io.ByteArrayResource(jsonBytes), "application/json");
+            mailSender.send(mimeMessage);
+            return true;
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to send GDPR export email", e);
+        }
+    }
+
+    // =========================
+    // GDPR deletion workflow notices (Art. 17)
+    // =========================
+
+    /** Sent when the deletion request is received and awaits admin review. */
+    public boolean sendGdprDeletionReceivedEmail(String to, String displayName) {
+        return sendSimpleGdprDeletionEmail(to, displayName,
+            "We have received your request to delete your account and personal data. "
+                + "An administrator will review it and confirm a deletion date. "
+                + "You can withdraw the request at any time from Settings > Privacy.");
+    }
+
+    /** Sent at approval with the fixed deletion date (at least 30 days out). */
+    public boolean sendGdprDeletionScheduledEmail(String to, String displayName, java.time.LocalDate date) {
+        return sendSimpleGdprDeletionEmail(to, displayName,
+            "Your deletion request has been approved. Your account and personal data "
+                + "will be deleted on " + date + ". "
+                + "You can still withdraw the request from Settings > Privacy until that date. "
+                + "Schedule history used for salary and payment records is retained "
+                + "according to bookkeeping rules until the deletion.");
+    }
+
+    /** Sent after the nightly job performed the deletion. */
+    public boolean sendGdprDeletionCompletedEmail(String to, String displayName) {
+        return sendSimpleGdprDeletionEmail(to, displayName,
+            "Your account and personal data have now been deleted as requested. "
+                + "Data we must keep for bookkeeping (accounting) law is retained in "
+                + "an anonymised form that can no longer be linked to you.");
+    }
+
+    private boolean sendSimpleGdprDeletionEmail(String to, String displayName, String body) {
+        Map<String, String> mail = appSettingsService.getMailSettings();
+        if (!Boolean.parseBoolean(mail.getOrDefault("enabled", "false"))) {
+            return false;
+        }
+        String host = mail.getOrDefault("host", "").trim();
+        String from = mail.getOrDefault("from", "").trim();
+        if (host.isBlank() || to == null || to.isBlank()) {
+            return false;
+        }
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(from.isBlank() ? to : from);
+        message.setTo(to);
+        message.setSubject("Your deletion request - Nordic Framtiden");
+        message.setText("Hello " + displayName + ",\n\n"
+            + body + "\n\nKind regards,\nNordic Framtiden");
+        mailSender.send(message);
+        return true;
+    }
+
+    // =========================
     // Password reset (Swedish, professional HTML)
     // =========================
 

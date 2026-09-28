@@ -29,14 +29,17 @@ public class GdprController {
       GdprConsent.TYPE_PUSH_NOTIFICATIONS);
 
   private final GdprService gdprService;
+  private final GdprDeletionService deletionService;
   private final com.nordicframtiden.security.repo.AppUserRepository userRepo;
   private final UserService userService;
 
   public GdprController(
       GdprService gdprService,
+      GdprDeletionService deletionService,
       com.nordicframtiden.security.repo.AppUserRepository userRepo,
       UserService userService) {
     this.gdprService = gdprService;
+    this.deletionService = deletionService;
     this.userRepo = userRepo;
     this.userService = userService;
   }
@@ -89,19 +92,88 @@ public class GdprController {
     return gdprService.export(userId);
   }
 
-  // ---------- Art. 17 erasure ----------
-
-  @DeleteMapping("/me")
+  /**
+   * Email delivery of the export: the client asks the user to confirm ("the
+   * export will be sent to your email within 24 hours") before calling this.
+   * Queues the request; the 03:00 job emails the JSON. Idempotent while
+   * pending.
+   */
+  @PostMapping("/me/export/email")
   @PreAuthorize("isAuthenticated()")
-  public ResponseEntity<Map<String, Object>> eraseMe(Authentication auth) {
-    Long userId = currentUserId(auth);
-    String username = currentUsername(auth);
-    gdprService.recordConsent(userId, username, GdprConsent.TYPE_ERASURE_REQUEST, true);
-    // The account itself (and the ADMIN guard from UserService) still applies:
-    // admins erase through the admin endpoints or another admin does it.
-    userService.deleteUser(userId);
-    return ResponseEntity.ok(Map.of("erased", true, "username", username));
+  public GdprExportRequest requestExportEmail(Authentication auth) {
+    return gdprService.requestExportByEmail(currentUserId(auth));
   }
+
+  /** Latest export-email request status, so the UI can show pending/sent. */
+  @GetMapping("/me/export/email")
+  @PreAuthorize("isAuthenticated()")
+  public ResponseEntity<GdprExportRequest> latestExportRequest(Authentication auth) {
+    return gdprService.latestExportRequest(currentUserId(auth))
+        .map(ResponseEntity::ok)
+        .orElseGet(() -> ResponseEntity.noContent().build());
+  }
+
+  // ---------- Art. 17 erasure: admin-reviewed scheduled deletion ----------
+
+  /**
+   * Files a deletion request for review. Deleting a user also deletes their
+   * schedule history (needed for payroll), so erasure is NOT immediate: an
+   * admin approves and schedules it at least MIN_GRACE_DAYS out, the user is
+   * emailed the date, and the nightly job executes after that date.
+   */
+  @PostMapping("/me/deletion-request")
+  @PreAuthorize("isAuthenticated()")
+  public GdprDeletionRequest requestDeletion(
+      @RequestBody(required = false) DeletionRequestRequest body, Authentication auth) {
+    return deletionService.request(currentUserId(auth), body == null ? null : body.reason());
+  }
+
+  public record DeletionRequestRequest(String reason) {}
+
+  /** The requester withdraws their own request before execution. */
+  @PostMapping("/me/deletion-request/{id}/cancel")
+  @PreAuthorize("isAuthenticated()")
+  public GdprDeletionRequest cancelDeletion(@PathVariable Long id, Authentication auth) {
+    return deletionService.cancel(currentUserId(auth), id);
+  }
+
+  /** The caller's deletion requests, newest first. */
+  @GetMapping("/me/deletion-request")
+  @PreAuthorize("isAuthenticated()")
+  public List<GdprDeletionRequest> myDeletionRequests(Authentication auth) {
+    return deletionService.myRequests(currentUserId(auth));
+  }
+
+  /** ADMIN: all deletion requests (review queue). */
+  @GetMapping("/deletion-requests")
+  @PreAuthorize("hasRole('ADMIN')")
+  public List<GdprDeletionRequest> allDeletionRequests() {
+    return deletionService.allRequests();
+  }
+
+  /** ADMIN: approve with a scheduled execution date (>= 30 days out). */
+  @PostMapping("/deletion-requests/{id}/approve")
+  @PreAuthorize("hasRole('ADMIN')")
+  public GdprDeletionRequest approveDeletion(
+      @PathVariable Long id,
+      @RequestBody ApproveDeletionRequest body,
+      Authentication auth) {
+    return deletionService.approve(id, auth.getName(), body.scheduledDate());
+  }
+
+  public record ApproveDeletionRequest(java.time.LocalDate scheduledDate) {}
+
+  /** ADMIN: decline the request with a reason. */
+  @PostMapping("/deletion-requests/{id}/reject")
+  @PreAuthorize("hasRole('ADMIN')")
+  public GdprDeletionRequest rejectDeletion(
+      @PathVariable Long id,
+      @RequestBody(required = false) RejectDeletionRequest body,
+      Authentication auth) {
+    return deletionService.reject(id, auth.getName(), body == null ? null : body.reason());
+  }
+
+  public record RejectDeletionRequest(String reason) {}
 
   // ---------- Admin: on behalf of a user ----------
 
