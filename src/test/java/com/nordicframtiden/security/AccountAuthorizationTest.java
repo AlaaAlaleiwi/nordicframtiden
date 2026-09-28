@@ -51,6 +51,24 @@ class AccountAuthorizationTest {
         verifyNoInteractions(userRepository);
     }
 
+    @Test
+    void ownerIsRecognizedByAuthenticatedUsername() {
+        var owner = new AppUser();
+        owner.setUsername("caller");
+        when(userRepository.findById(12L)).thenReturn(Optional.of(owner));
+
+        assertThat(authorization.isOwner(authentication("ROLE_USER"), 12L)).isTrue();
+    }
+
+    @Test
+    void differentUserIsNotOwner() {
+        var owner = new AppUser();
+        owner.setUsername("someone-else");
+        when(userRepository.findById(12L)).thenReturn(Optional.of(owner));
+
+        assertThat(authorization.isOwner(authentication("ROLE_USER"), 12L)).isFalse();
+    }
+
     private static UsernamePasswordAuthenticationToken authentication(String... authorities) {
         return new UsernamePasswordAuthenticationToken(
             "caller",

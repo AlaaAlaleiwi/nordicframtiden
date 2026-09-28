@@ -8,6 +8,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -90,6 +91,33 @@ class ChatPushNotificationServiceTest {
     verify(sender).send(org.mockito.Mockito.eq("fid-anna"), captor.capture());
     org.assertj.core.api.Assertions.assertThat(captor.getValue())
         .containsEntry("body", "Alaa Alaleiwi is calling");
+  }
+
+  @Test
+  void employeeDocumentUploadNotifiesEverySubscribedAdmin() {
+    ChatPushSubscriptionRepository subscriptions = mock(ChatPushSubscriptionRepository.class);
+    AppUserRepository users = mock(AppUserRepository.class);
+    ChatPushSender sender = mock(ChatPushSender.class);
+    AppUser firstAdmin = user(1L, "first.admin");
+    AppUser secondAdmin = user(2L, "second.admin");
+    when(users.findAllAdmins()).thenReturn(List.of(firstAdmin, secondAdmin));
+    when(subscriptions.findByUserUsernameIn(Set.of("first.admin", "second.admin")))
+        .thenReturn(List.of(subscription("fid-first"), subscription("fid-second")));
+
+    ChatPushNotificationService service = new ChatPushNotificationService(
+        subscriptions, users, sender, mock(UserProfileRepository.class),
+        mock(com.nordicframtiden.admin.model.AdminProfileRepository.class));
+    service.notifyAdminsDocumentUploaded("Anna Andersson", "license.pdf", 7L);
+
+    @SuppressWarnings("unchecked")
+    org.mockito.ArgumentCaptor<java.util.Map<String, String>> captor =
+        org.mockito.ArgumentCaptor.forClass((Class) java.util.Map.class);
+    verify(sender).send(org.mockito.Mockito.eq("fid-first"), captor.capture());
+    verify(sender).send(org.mockito.Mockito.eq("fid-second"), org.mockito.Mockito.anyMap());
+    assertThat(captor.getValue())
+        .containsEntry("type", "document.uploaded")
+        .containsEntry("userId", "7")
+        .containsEntry("body", "Anna Andersson uploaded license.pdf");
   }
 
   private static ChatPushSubscription subscription(String fid) {
