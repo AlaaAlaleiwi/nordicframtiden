@@ -9,4 +9,7 @@ public interface ProfileDocumentRepository extends JpaRepository<ProfileDocument
     List<ProfileDocument> findByUserIdOrderByIdDesc(Long userId);
 
     long deleteByIdAndUserId(Long id, Long userId);
+
+    /** Cleanup when deleting the owning account (its documents die with it). */
+    void deleteByUserId(Long userId);
 }

@@ -17,14 +17,17 @@ public class ChatPushNotificationService {
   private final AppUserRepository users;
   private final ChatPushSender sender;
   private final UserProfileRepository profiles;
+  private final com.nordicframtiden.admin.model.AdminProfileRepository adminProfiles;
 
   public ChatPushNotificationService(ChatPushSubscriptionRepository subscriptions,
                                      AppUserRepository users, ChatPushSender sender,
-                                     UserProfileRepository profiles) {
+                                     UserProfileRepository profiles,
+                                     com.nordicframtiden.admin.model.AdminProfileRepository adminProfiles) {
     this.subscriptions = subscriptions;
     this.users = users;
     this.sender = sender;
     this.profiles = profiles;
+    this.adminProfiles = adminProfiles;
   }
 
   @Transactional
@@ -60,9 +63,15 @@ public class ChatPushNotificationService {
   public void notifyIncomingCall(Set<String> usernames, String caller, String callId, long roomId,
                                  boolean video) {
     if (usernames.isEmpty()) return;
+    // Full name from the user profile, then the admin profile (pure admins
+    // have no user profile) — never show a raw username if avoidable.
     String callerName = users.findByUsername(caller)
-        .flatMap(user -> profiles.findByUserId(user.getId()))
-        .map(profile -> profile.getFullName())
+        .flatMap(user -> profiles.findByUserId(user.getId())
+            .map(profile -> profile.getFullName())
+            .filter(name -> !name.isBlank())
+            .or(() -> adminProfiles.findByUserId(user.getId())
+                .map(profile -> profile.getFullName())
+                .filter(name -> !name.isBlank())))
         .filter(name -> !name.isBlank())
         .orElse(caller);
     var data = Map.of(

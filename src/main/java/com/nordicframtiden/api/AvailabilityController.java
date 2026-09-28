@@ -111,7 +111,8 @@ public class AvailabilityController {
   @GetMapping("/range")
   @PreAuthorize("hasRole('ADMIN') or hasAuthority('PERM_AVAILABILITY')")
  
-  public List<AvailabilityRow> range(@RequestParam LocalDate start, @RequestParam LocalDate end) {
-    return service.getApprovedOverlapping(start, end);
+  public List<AvailabilityRow> range(@RequestParam LocalDate start, @RequestParam LocalDate end,
+      @RequestParam(required = false) String statuses) {
+    return service.getOverlapping(start, end, statuses);
   }
 }

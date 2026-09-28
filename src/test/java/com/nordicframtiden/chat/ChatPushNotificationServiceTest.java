@@ -28,7 +28,8 @@ class ChatPushNotificationServiceTest {
         .thenReturn(Optional.empty());
     when(subscriptions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     ChatPushNotificationService service = new ChatPushNotificationService(
-        subscriptions, users, sender, mock(UserProfileRepository.class));
+        subscriptions, users, sender, mock(UserProfileRepository.class),
+        mock(com.nordicframtiden.admin.model.AdminProfileRepository.class));
 
     ChatPushSubscription saved = service.register(authentication("anna"), "fid-123");
 
@@ -42,7 +43,8 @@ class ChatPushNotificationServiceTest {
     AppUserRepository users = mock(AppUserRepository.class);
     ChatPushSender sender = mock(ChatPushSender.class);
     ChatPushNotificationService service = new ChatPushNotificationService(
-        subscriptions, users, sender, mock(UserProfileRepository.class));
+        subscriptions, users, sender, mock(UserProfileRepository.class),
+        mock(com.nordicframtiden.admin.model.AdminProfileRepository.class));
     ChatRoom room = new ChatRoom();
     room.setId(12L);
     ChatMessage message = new ChatMessage();
@@ -57,6 +59,37 @@ class ChatPushNotificationServiceTest {
 
     verify(sender).send("fid-erik");
     verify(sender).send("fid-sara");
+  }
+
+  @Test
+  void incomingCallShowsTheAdminCallersFullNameFromTheAdminProfile() {
+    ChatPushSubscriptionRepository subscriptions = mock(ChatPushSubscriptionRepository.class);
+    AppUserRepository users = mock(AppUserRepository.class);
+    ChatPushSender sender = mock(ChatPushSender.class);
+    UserProfileRepository profiles = mock(UserProfileRepository.class);
+    com.nordicframtiden.admin.model.AdminProfileRepository adminProfiles =
+        mock(com.nordicframtiden.admin.model.AdminProfileRepository.class);
+
+    AppUser admin = user(3L, "alaa.admin");
+    when(users.findByUsername("alaa.admin")).thenReturn(Optional.of(admin));
+    when(profiles.findByUserId(3L)).thenReturn(Optional.empty());
+    com.nordicframtiden.admin.model.AdminProfile profile =
+        new com.nordicframtiden.admin.model.AdminProfile();
+    profile.setFullName("Alaa Alaleiwi");
+    when(adminProfiles.findByUserId(3L)).thenReturn(Optional.of(profile));
+    when(subscriptions.findByUserUsernameIn(java.util.Set.of("anna")))
+        .thenReturn(List.of(subscription("fid-anna")));
+
+    ChatPushNotificationService service = new ChatPushNotificationService(
+        subscriptions, users, sender, profiles, adminProfiles);
+    service.notifyIncomingCall(java.util.Set.of("anna"), "alaa.admin", "call-1", 12L);
+
+    @SuppressWarnings("unchecked")
+    org.mockito.ArgumentCaptor<java.util.Map<String, String>> captor =
+        org.mockito.ArgumentCaptor.forClass((Class) java.util.Map.class);
+    verify(sender).send(org.mockito.Mockito.eq("fid-anna"), captor.capture());
+    org.assertj.core.api.Assertions.assertThat(captor.getValue())
+        .containsEntry("body", "Alaa Alaleiwi is calling");
   }
 
   private static ChatPushSubscription subscription(String fid) {

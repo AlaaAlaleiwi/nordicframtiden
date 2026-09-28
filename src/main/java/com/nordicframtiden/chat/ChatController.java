@@ -1,6 +1,8 @@
 package com.nordicframtiden.chat;
 
+import com.nordicframtiden.admin.model.AdminProfileRepository;
 import com.nordicframtiden.security.model.AppUser;
+import com.nordicframtiden.security.service.UserService;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import jakarta.validation.Valid;
@@ -31,22 +33,27 @@ public class ChatController {
   private final ChatAttachmentPurgeService purgeService;
   private final AppUserRepository users;
   private final UserProfileRepository profiles;
+  private final AdminProfileRepository adminProfiles;
   private final ChatPresence presence;
+  private final UserService userService;
 
   public ChatController(ChatService service, ChatRoomMemberRepository members,
                         ChatMessageRepository messages, ChatReactionRepository reactions,
                         ChatAttachmentRepository attachments,
                         ChatAttachmentDeliveryRepository deliveries,
                         ChatAttachmentPurgeService purgeService,
-                        AppUserRepository users, UserProfileRepository profiles, ChatPresence presence) {
+                        AppUserRepository users, UserProfileRepository profiles,
+                        AdminProfileRepository adminProfiles, ChatPresence presence,
+                        UserService userService) {
     this.service = service; this.members = members; this.messages = messages; this.reactions = reactions;
     this.attachments = attachments;
     this.deliveries = deliveries;
     this.purgeService = purgeService;
-    this.users = users; this.profiles = profiles; this.presence = presence;
+    this.users = users; this.profiles = profiles; this.adminProfiles = adminProfiles; this.presence = presence;
+    this.userService = userService;
   }
 
-  public record ParticipantDto(Long id, String username, String displayName, boolean online) {}
+  public record ParticipantDto(Long id, String username, String displayName, boolean online, Long photoId) {}
   public record RoomDto(Long id, String type, String name, String description, boolean privateChannel,
                         boolean member, boolean canManage, boolean owner, Long ownerUserId,
                         long unreadCount, List<ParticipantDto> participants,
@@ -255,8 +262,12 @@ public class ChatController {
   }
 
   private ParticipantDto participant(AppUser user) {
+    // Full name from the user profile; pure admins keep theirs in the admin
+    // profile instead, so consult that before degrading to the username.
     String displayName = profiles.findByUserId(user.getId()).map(profile -> profile.getFullName()).filter(name -> !name.isBlank())
+        .or(() -> adminProfiles.findByUserId(user.getId()).map(profile -> profile.getFullName()).filter(name -> !name.isBlank()))
         .orElse(user.getUsername());
-    return new ParticipantDto(user.getId(), user.getUsername(), displayName, presence.isOnline(user.getUsername()));
+    return new ParticipantDto(user.getId(), user.getUsername(), displayName, presence.isOnline(user.getUsername()),
+        userService.photoIdOf(user.getId()));
   }
 }

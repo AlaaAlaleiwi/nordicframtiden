@@ -13,4 +13,7 @@ public interface ChatRoomMemberRepository extends JpaRepository<ChatRoomMember, 
 
   @Query("select m.user.username from ChatRoomMember m where m.room.id = :roomId")
   List<String> findUsernamesByRoomId(@Param("roomId") Long roomId);
+
+  /** Cleanup when deleting an account: memberships keyed by user id. */
+  void deleteByUserId(Long userId);
 }

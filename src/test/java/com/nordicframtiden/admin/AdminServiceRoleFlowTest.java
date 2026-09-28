@@ -59,6 +59,8 @@ class AdminServiceRoleFlowTest {
     @Mock private ChatPushSubscriptionRepository chatPushSubscriptionRepo;
     @Mock private StaffShiftRepository staffShiftRepo;
     @Mock private AvailabilityRequestRepository availabilityRequestRepo;
+    @Mock private com.nordicframtiden.chat.ChatRoomMemberRepository chatRoomMemberRepo;
+    @Mock private com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokenRepo;
 
     private AdminService service;
 
@@ -70,7 +72,9 @@ class AdminServiceRoleFlowTest {
             availabilityRequestRepo,
             org.mockito.Mockito.mock(com.nordicframtiden.documents.ProfileDocumentRepository.class),
             org.mockito.Mockito.mock(com.nordicframtiden.chat.ChatAttachmentRepository.class),
-            org.mockito.Mockito.mock(com.nordicframtiden.service.model.PayslipSnapshotRepository.class));
+            org.mockito.Mockito.mock(com.nordicframtiden.service.model.PayslipSnapshotRepository.class),
+            chatRoomMemberRepo,
+            resetTokenRepo);
     }
 
     private AppUser userWithRoles(Role... roles) {

@@ -81,9 +81,29 @@ public class AvailabilityService {
 
   @Transactional(readOnly = true)
   public List<AvailabilityController.AvailabilityRow> getApprovedOverlapping(LocalDate start, LocalDate end) {
-    var rows = repo.findApprovedOverlapping(start, end);
+    return getOverlapping(start, end, null);
+  }
 
-    return rows.stream().map(a -> {
+  /**
+   * Availability rows overlapping [start, end]. statusesCsv is a comma-separated
+   * list (e.g. "PENDING,APPROVED"); null/blank falls back to APPROVED only, so
+   * existing callers keep their semantics.
+   */
+  @Transactional(readOnly = true)
+  public List<AvailabilityController.AvailabilityRow> getOverlapping(LocalDate start, LocalDate end, String statusesCsv) {
+    List<AvailabilityRequest.Status> statuses = parseStatuses(statusesCsv);
+    if (statuses != null && statuses.isEmpty()) return List.of(); // no valid statuses -> nothing can match
+    var rows = (statuses == null)
+        ? repo.findApprovedOverlapping(start, end)
+        : repo.findByStatusInAndOverlapping(statuses, start, end);
+
+    // Defensive re-filter: the guarantee "only the requested statuses come
+    // back" lives here too, not only in the SQL.
+    return rows.stream()
+        .filter(a -> statuses == null
+            ? a.getStatus() == AvailabilityRequest.Status.APPROVED
+            : statuses.contains(a.getStatus()))
+        .map(a -> {
       var u = a.getUser();                 // ✅ use relation
       var userId = u.getId();
 
@@ -106,5 +126,21 @@ public class AvailabilityService {
           a.getNote()
       );
     }).toList();
+  }
+
+  private static List<AvailabilityRequest.Status> parseStatuses(String statusesCsv) {
+    if (statusesCsv == null || statusesCsv.isBlank()) return null;
+    return java.util.Arrays.stream(statusesCsv.split(","))
+        .map(String::trim)
+        .filter(s -> !s.isEmpty())
+        .map(s -> {
+          try {
+            return AvailabilityRequest.Status.valueOf(s.toUpperCase(java.util.Locale.ROOT));
+          } catch (IllegalArgumentException e) {
+            return null;
+          }
+        })
+        .filter(java.util.Objects::nonNull)
+        .toList();
   }
 }

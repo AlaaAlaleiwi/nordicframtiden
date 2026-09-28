@@ -26,5 +26,22 @@ public interface AvailabilityRequestRepository extends JpaRepository<Availabilit
       @Param("endDate") LocalDate endDate
   );
 
+  /**
+   * Availability requests with any of the given statuses overlapping the
+   * inclusive date range — lets the admin shift form consider PENDING and
+   * APPROVED requests together (REJECTED never counts as available).
+   */
+  @Query("""
+    select a from AvailabilityRequest a
+    where a.status in :statuses
+      and a.startDate <= :endDate
+      and a.endDate >= :startDate
+  """)
+  List<AvailabilityRequest> findByStatusInAndOverlapping(
+      @Param("statuses") List<AvailabilityRequest.Status> statuses,
+      @Param("startDate") LocalDate startDate,
+      @Param("endDate") LocalDate endDate
+  );
+
   void deleteByUser(com.nordicframtiden.security.model.AppUser user);
 }

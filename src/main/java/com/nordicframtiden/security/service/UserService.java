@@ -74,6 +74,7 @@ public class UserService {
       Integer yearOfBirth,
       String countyCode,
       String municipalityCode,
+      Long photoId,
       Set<Permission> permissions,
       String password,
       boolean admin
@@ -90,9 +91,19 @@ public class UserService {
       Integer yearOfBirth,
       String countyCode,
       String municipalityCode,
+      Long photoId,
       Set<Permission> permissions,
       boolean admin
   ) {}
+
+  /** Photo id for a user, or null when they have no photo. */
+  public Long photoIdOf(Long userId) {
+    return userRepo.findById(userId).map(u -> u.getPhotoId()).orElse(null);
+  }
+
+  private static Long photoId(AppUser u) {
+    return u == null ? null : u.getPhotoId();
+  }
 
   // ---------- Validation helpers ----------
 
@@ -143,6 +154,7 @@ public class UserService {
         profile != null ? profile.getYearOfBirth() : null,
         profile != null ? profile.getCountyCode() : null,
         profile != null ? profile.getMunicipalityCode() : null,
+        photoId(u),
         safePerms(u.getPermissions()),
         u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
     );
@@ -160,12 +172,12 @@ public class UserService {
               profile != null ? profile.getEmail() : null,
               profile != null ? profile.getPhone() : null,
               profile != null ? profile.getHourlyCost() : null,
-              profile != null ? profile.getYearOfBirth() : null,
-              profile != null ? profile.getCountyCode() : null,
-              profile != null ? profile.getMunicipalityCode() : null,
-              safePerms(u.getPermissions()),
-              u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
-          );
+              profile != null ? profile.getYearOfBirth() : null,          profile != null ? profile.getCountyCode() : null,
+          profile != null ? profile.getMunicipalityCode() : null,
+          photoId(u),
+          safePerms(u.getPermissions()),
+          u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
+      );
         })
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
   }
@@ -184,6 +196,7 @@ public class UserService {
           p != null ? p.getYearOfBirth() : null,
           p != null ? p.getCountyCode() : null,
           p != null ? p.getMunicipalityCode() : null,
+          photoId(u),
           safePerms(u.getPermissions()),
           null,
           u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
@@ -261,6 +274,7 @@ public class UserService {
         p.getYearOfBirth(),
         p.getCountyCode(),
         p.getMunicipalityCode(),
+        photoId(u),
         safePerms(u.getPermissions()),
         rawPassword,
         u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
@@ -342,6 +356,7 @@ public class UserService {
         p.getYearOfBirth(),
         p.getCountyCode(),
         p.getMunicipalityCode(),
+        photoId(u),
         safePerms(u.getPermissions()),
         null,
         u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
@@ -436,6 +451,7 @@ public class UserService {
         p != null ? p.getYearOfBirth() : null,
         p != null ? p.getCountyCode() : null,
         p != null ? p.getMunicipalityCode() : null,
+        photoId(u),
         safePerms(u.getPermissions()),
         rawPassword,
         u.getRoles() != null && u.getRoles().contains(Role.ADMIN)

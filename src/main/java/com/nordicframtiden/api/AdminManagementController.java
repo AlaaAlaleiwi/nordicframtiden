@@ -58,6 +58,7 @@ public class AdminManagementController {
             String fullName,
             String email,
             String phone,
+            Long photoId,
             String password
     ) {}
 
@@ -92,6 +93,7 @@ public class AdminManagementController {
                 user.fullName(),
                 user.email(),
                 user.phone(),
+                repo.findById(user.id()).map(u -> u.getPhotoId()).orElse(null),
                 null
         ));
     }
@@ -106,6 +108,7 @@ public class AdminManagementController {
                         a.fullName(),
                         a.email(),
                         a.phone(),
+                        null,
                         null
                 ))
                 .toList();
@@ -137,6 +140,7 @@ public class AdminManagementController {
                 created.fullName(),
                 created.email(),
                 created.phone(),
+                null,
                 null
         ));
     }
@@ -159,6 +163,7 @@ public class AdminManagementController {
                 updated.fullName(),
                 updated.email(),
                 updated.phone(),
+                null,
                 null
         );
     }

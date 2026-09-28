@@ -49,6 +49,8 @@ public class AdminService {
     private final com.nordicframtiden.documents.ProfileDocumentRepository profileDocumentRepo;
     private final com.nordicframtiden.chat.ChatAttachmentRepository chatAttachmentRepo;
     private final com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshotRepo;
+    private final com.nordicframtiden.chat.ChatRoomMemberRepository chatRoomMemberRepo;
+    private final com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokenRepo;
 
     public AdminService(AppUserRepository repo,
                        AdminProfileRepository adminProfileRepo,
@@ -65,7 +67,9 @@ public class AdminService {
                        AvailabilityRequestRepository availabilityRequestRepo,
                        com.nordicframtiden.documents.ProfileDocumentRepository profileDocumentRepo,
                        com.nordicframtiden.chat.ChatAttachmentRepository chatAttachmentRepo,
-                       com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshotRepo) {
+                       com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshotRepo,
+                       com.nordicframtiden.chat.ChatRoomMemberRepository chatRoomMemberRepo,
+                       com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokenRepo) {
         this.repo = repo;
         this.adminProfileRepo = adminProfileRepo;
         this.userProfileRepo = userProfileRepo;
@@ -82,6 +86,8 @@ public class AdminService {
         this.profileDocumentRepo = profileDocumentRepo;
         this.chatAttachmentRepo = chatAttachmentRepo;
         this.payslipSnapshotRepo = payslipSnapshotRepo;
+        this.chatRoomMemberRepo = chatRoomMemberRepo;
+        this.resetTokenRepo = resetTokenRepo;
     }
 
     public record AdminRow(
@@ -386,6 +392,14 @@ public class AdminService {
         chatPushSubscriptionRepo.deleteByUser(user);
         staffShiftRepo.deleteByUser(user);
         availabilityRequestRepo.deleteByUser(user);
+        // Channel memberships (the join table cascades server-side, but the
+        // rows must go before the user row in the same transaction).
+        chatRoomMemberRepo.deleteByUserId(id);
+        // Outstanding password-reset links die with the account.
+        resetTokenRepo.deleteByUserId(id);
+        // The admin's own profile documents (user_id cascades server-side;
+        // delete explicitly so the payload is purged, not orphaned).
+        profileDocumentRepo.deleteByUserId(id);
 
         adminProfileRepo.findByUserId(id).ifPresent(adminProfileRepo::delete);
         repo.delete(user);
