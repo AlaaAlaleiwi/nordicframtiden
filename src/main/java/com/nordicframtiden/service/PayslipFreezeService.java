@@ -110,6 +110,12 @@ public class PayslipFreezeService {
     BigDecimal originalRegularTax = old.regularTax() == null ? old.preliminaryTax().subtract(orZero(old.oneTimeTax())) : old.regularTax();
     if (originalRegularTax.add(orZero(old.oneTimeTax())).compareTo(old.preliminaryTax()) != 0)
       throw new PayslipConflictException("Stored withholding breakdown does not reconcile; review the legacy record before correcting");
+    BigDecimal originalOneTime = (old.adjustments() == null ? List.<NetSalaryResponse.AdjustmentLine>of() : old.adjustments())
+        .stream().filter(a -> a.taxTreatment() == SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE)
+        .map(NetSalaryResponse.AdjustmentLine::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    if (originalOneTime.add(change.oneTimeGrossDelta()).signum() < 0 ||
+        old.grossSalary().subtract(originalOneTime).add(change.regularGrossDelta()).signum() < 0)
+      throw new IllegalArgumentException("Correction would make a taxable pay category negative");
     BigDecimal gross = old.grossSalary().add(change.regularGrossDelta()).add(change.oneTimeGrossDelta());
     BigDecimal regularTax = originalRegularTax.add(change.regularTaxDelta());
     BigDecimal oneTimeTax = orZero(old.oneTimeTax()).add(change.oneTimeTaxDelta());

@@ -9,12 +9,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 
-/**
- * Frozen payslip for an ended salary month, stored as the serialized
- * {@link com.nordicframtiden.service.model.NetSalaryResponse} JSON. Past
- * months are served verbatim from this table so later changes to the hourly
- * cost (or other profile data) never rewrite history.
- */
+/** Original finalized calculation. Revisions are appended separately; this payload never changes. */
 @Entity
 @Table(name = "payslip_snapshot",
     uniqueConstraints = @UniqueConstraint(

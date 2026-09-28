@@ -104,6 +104,26 @@ class PayslipFreezeServiceTest {
     assertThat(service.history(7L, 2026, 8, "USER").getFirst().payslip()).isEqualTo(original);
     verifyNoInteractions(payroll);
   }
+  @Test void finalizedCurrentAndFuturePeriodsDoNotUseCurrentSettings() throws Exception {
+    frozen("USER");
+    when(snapshots.findByUserIdAndYearAndMonthAndRole(7L, 2100, 1, "USER")).thenReturn(Optional.of(snapshot));
+    assertThat(service.resolve(7L, 2100, 1, "USER")).isEqualTo(original);
+    verifyNoInteractions(payroll);
+  }
+  @Test void inconsistentLegacyNetIsNotSilentlyRepairedByCorrection() throws Exception {
+    frozen("USER");
+    String broken = snapshot.getPayload().replace("\"netSalary\":14000", "\"netSalary\":13999");
+    when(revisions.findTopBySnapshotIdOrderByRevisionDesc(42L)).thenReturn(Optional.of(new PayslipRevision(42L, 1, "old", "old", null, broken)));
+    assertThatThrownBy(() -> service.correct(7L, 2026, 8, "USER", correction(1, "Fix", "100", "30"), "admin"))
+        .isInstanceOf(PayslipConflictException.class).hasMessageContaining("reconcile");
+    verify(revisions, never()).saveAndFlush(any());
+  }
+  @Test void cannotRemoveOneTimePayThatWasNeverPaid() throws Exception {
+    frozen("USER");
+    var change = new PayslipFreezeService.Correction(1, "Remove bonus", bd("0"), bd("-100"), bd("0"), bd("0"), bd("0"));
+    assertThatThrownBy(() -> service.correct(7L, 2026, 8, "USER", change, "admin"))
+        .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("category");
+  }
   @Test void staleRevisionIsRejectedWithoutWriting() throws Exception {
     frozen("USER");
     assertThatThrownBy(() -> service.correct(7L, 2026, 8, "USER", correction(0, "Fix", "100", "30"), "admin"))
