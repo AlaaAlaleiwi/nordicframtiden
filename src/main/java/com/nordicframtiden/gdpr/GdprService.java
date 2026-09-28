@@ -242,7 +242,7 @@ public class GdprService {
           map.put("month", s.getMonth());
           map.put("role", s.getRole());
           map.put("payload", s.getPayload());
-          map.put("revisions", s.getRevisions());
+          map.put("revisions", List.copyOf(s.getRevisions()));
           return map;
         })
         .toList();

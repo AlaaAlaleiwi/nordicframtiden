@@ -104,8 +104,14 @@ public class PayslipFreezeService {
     }
     if (deltas.stream().allMatch(d -> d.signum() == 0)) throw new IllegalArgumentException("Correction has no changes");
     NetSalaryResponse old = read(previous.getPayload(), NetSalaryResponse.class);
+    if (old.grossSalary() == null || old.preliminaryTax() == null || old.netSalary() == null ||
+        old.grossSalary().subtract(old.preliminaryTax()).add(orZero(old.taxFreeAmount())).compareTo(old.netSalary()) != 0)
+      throw new PayslipConflictException("Stored payslip totals do not reconcile; review the legacy record before correcting");
+    BigDecimal originalRegularTax = old.regularTax() == null ? old.preliminaryTax().subtract(orZero(old.oneTimeTax())) : old.regularTax();
+    if (originalRegularTax.add(orZero(old.oneTimeTax())).compareTo(old.preliminaryTax()) != 0)
+      throw new PayslipConflictException("Stored withholding breakdown does not reconcile; review the legacy record before correcting");
     BigDecimal gross = old.grossSalary().add(change.regularGrossDelta()).add(change.oneTimeGrossDelta());
-    BigDecimal regularTax = orZero(old.regularTax()).add(change.regularTaxDelta());
+    BigDecimal regularTax = originalRegularTax.add(change.regularTaxDelta());
     BigDecimal oneTimeTax = orZero(old.oneTimeTax()).add(change.oneTimeTaxDelta());
     BigDecimal tax = old.preliminaryTax().add(change.regularTaxDelta()).add(change.oneTimeTaxDelta());
     BigDecimal taxFree = orZero(old.taxFreeAmount()).add(change.taxFreeDelta());
@@ -156,7 +162,7 @@ public class PayslipFreezeService {
         : payroll.netSalaryForUserMonth(userId, year, month);
   }
   private <T> T read(String payload, Class<T> type) {
-    try { return json.readValue(payload, type); }
+    try { return java.util.Objects.requireNonNull(json.readValue(payload, type)); }
     catch (Exception e) { throw new PayslipConflictException("Stored payslip cannot be read; restore it instead of recalculating history"); }
   }
   private String write(Object value) {
