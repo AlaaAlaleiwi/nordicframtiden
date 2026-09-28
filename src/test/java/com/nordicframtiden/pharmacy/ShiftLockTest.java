@@ -146,6 +146,9 @@ class ShiftLockTest {
         AppUser u = user();
         when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
+        com.nordicframtiden.security.model.UserProfile profile = new com.nordicframtiden.security.model.UserProfile();
+        profile.setHourlyCost(new java.math.BigDecimal("100"));
+        when(userService.getProfileByUserId(7L)).thenReturn(profile);
         when(shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(any(), any(), any()))
             .thenReturn(List.of());
         when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));

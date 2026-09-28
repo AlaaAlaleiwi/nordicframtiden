@@ -42,9 +42,9 @@ class ScheduleServiceRateAndWindowTest {
 
     @BeforeEach
     void setUp() {
-        // Fixed clock after every fixture date: the past-shift lock is inert here.
+        // Fixed clock before every fixture date: the past-shift lock is inert here.
         service = new ScheduleService(shiftRepo, pharmacyRepo, userRepo, userService, null,
-            java.time.Clock.fixed(java.time.Instant.parse("2027-06-01T12:00:00Z"),
+            java.time.Clock.fixed(java.time.Instant.parse("2027-01-15T12:00:00Z"),
                 java.time.ZoneId.of("Europe/Stockholm")));
     }
 
@@ -63,12 +63,12 @@ class ScheduleServiceRateAndWindowTest {
     }
 
     private ScheduleShift existingShift(long id, long userId, String snapshotRate) {
-        ScheduleShift s = new ScheduleShift();
-        s.setId(id);
-        s.setUser(user(userId, "u" + userId));
-        s.setStartAt(OffsetDateTime.parse("2027-03-01T09:00:00Z"));
-        s.setEndAt(OffsetDateTime.parse("2027-03-01T17:00:00Z"));
-        s.setHourlyCostSnapshot(new BigDecimal(snapshotRate));
+        ScheduleShift s = org.mockito.Mockito.mock(ScheduleShift.class);
+        org.mockito.Mockito.lenient().doReturn(id).when(s).getId();
+        org.mockito.Mockito.lenient().doReturn(user(userId, "u" + userId)).when(s).getUser();
+        org.mockito.Mockito.lenient().doReturn(OffsetDateTime.parse("2027-03-01T09:00:00Z")).when(s).getStartAt();
+        org.mockito.Mockito.lenient().doReturn(OffsetDateTime.parse("2027-03-01T17:00:00Z")).when(s).getEndAt();
+        org.mockito.Mockito.lenient().doReturn(new BigDecimal(snapshotRate)).when(s).getHourlyCostSnapshot();
         return s;
     }
 
@@ -85,9 +85,10 @@ class ScheduleServiceRateAndWindowTest {
             .thenReturn(List.of());
         when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ScheduleShift updated = service.update(42L, null, 8L, null, null, null);
+        service.update(42L, null, 8L, null, null, null);
 
-        assertEquals(new BigDecimal("300"), updated.getHourlyCostSnapshot());
+        // Mocked entity: assert the snapshot setter saw the new rate.
+        verify(s).setHourlyCostSnapshot(new BigDecimal("300"));
     }
 
     @Test
@@ -98,9 +99,10 @@ class ScheduleServiceRateAndWindowTest {
             .thenReturn(List.of());
         when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ScheduleShift updated = service.update(42L, null, null, null, null, "note only");
+        service.update(42L, null, null, null, null, "note only");
 
-        assertEquals(new BigDecimal("200"), updated.getHourlyCostSnapshot());
+        // The frozen snapshot must not be touched; no profile lookup either.
+        verify(s, never()).setHourlyCostSnapshot(any());
         verify(userService, never()).getProfileByUserId(any());
     }
 
@@ -136,6 +138,7 @@ class ScheduleServiceRateAndWindowTest {
         AppUser u = user(7L, "pharm");
         when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
+        when(userService.getProfileByUserId(7L)).thenReturn(profileWithRate(new BigDecimal("100")));
         when(shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(any(), any(), any()))
             .thenReturn(List.of());
         lenient().when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -158,6 +161,7 @@ class ScheduleServiceRateAndWindowTest {
         AppUser u = user(7L, "pharm");
         when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
+        when(userService.getProfileByUserId(7L)).thenReturn(profileWithRate(new BigDecimal("100")));
         when(shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(any(), any(), any()))
             .thenReturn(List.of());
         lenient().when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));

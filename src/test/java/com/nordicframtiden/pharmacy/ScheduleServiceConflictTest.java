@@ -76,6 +76,9 @@ class ScheduleServiceConflictTest {
         AppUser u = user();
         when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
+        com.nordicframtiden.security.model.UserProfile profile = new com.nordicframtiden.security.model.UserProfile();
+        profile.setHourlyCost(new java.math.BigDecimal("100"));
+        when(userService.getProfileByUserId(7L)).thenReturn(profile);
         when(shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(
             org.mockito.ArgumentMatchers.eq(7L), any(), any()))
             .thenReturn(List.of());
@@ -94,6 +97,9 @@ class ScheduleServiceConflictTest {
         AppUser u = user();
         when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
+        com.nordicframtiden.security.model.UserProfile rateProfile = new com.nordicframtiden.security.model.UserProfile();
+        rateProfile.setHourlyCost(new java.math.BigDecimal("100"));
+        when(userService.getProfileByUserId(7L)).thenReturn(rateProfile);
         when(shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(
             org.mockito.ArgumentMatchers.eq(7L), any(), any()))
             .thenReturn(List.of());

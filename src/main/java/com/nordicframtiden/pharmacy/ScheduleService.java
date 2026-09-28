@@ -105,14 +105,9 @@ public class ScheduleService {
         // One shift per user per day: notify and reject the duplicate.
         assertNoShiftOnSameDay(user.getId(), startAt, endAt, null);
 
-        // ✅ get hourlyCost through userService
-        BigDecimal hourly = BigDecimal.ZERO;
-        try {
-            var profile = userService.getProfileByUserId(user.getId());
-            if (profile.getHourlyCost() != null)
-                hourly = profile.getHourlyCost();
-        } catch (Exception ignored) {
-        }
+        // ✅ Snapshot the pay rate at creation — but never silently at zero:
+        // a missing profile or rate is a setup error, refuse the booking.
+        BigDecimal hourly = resolveRateOrThrow(user.getId());
 
         ScheduleShift s = new ScheduleShift();
         s.setPharmacy(pharmacy);
@@ -157,6 +152,11 @@ public class ScheduleService {
                 deletionPolicy.assertShiftsAllowed(user.getId(),
                         startAt != null ? startAt : s.getStartAt());
             }
+            // Reassignment: the rate snapshot follows the employee, otherwise
+            // salary reporting keeps billing the previous person's rate.
+            if (!user.getId().equals(s.getUser().getId())) {
+                s.setHourlyCostSnapshot(resolveRateOrThrow(user.getId()));
+            }
             s.setUser(user);
         } else if (deletionPolicy != null && (startAt != null)) {
             deletionPolicy.assertShiftsAllowed(s.getUser().getId(), startAt);
@@ -194,6 +194,25 @@ public class ScheduleService {
         shiftRepo.deleteById(id);
     }
 
+    /**
+     * Resolves the employee's current pay rate for a fresh snapshot. Missing
+     * profile or missing rate is refused (never silently priced at zero).
+     */
+    private BigDecimal resolveRateOrThrow(Long userId) {
+        try {
+            var profile = userService.getProfileByUserId(userId);
+            if (profile == null || profile.getHourlyCost() == null) {
+                throw new IllegalArgumentException(
+                    "Användaren har ingen timkostnad satt — sätt lönen innan arbetpass bokas.");
+            }
+            return profile.getHourlyCost();
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Kunde inte läsa användarens profil för löneuppslagning.", e);
+        }
+    }
+
     private static void validateRange(OffsetDateTime startAt, OffsetDateTime endAt) {
         if (startAt == null || endAt == null)
             throw new IllegalArgumentException("Start/end required");
@@ -210,8 +229,12 @@ public class ScheduleService {
      * shift. {@code excludeShiftId} lets an update ignore itself.
      */
     private void assertNoShiftOnSameDay(Long userId, OffsetDateTime startAt, OffsetDateTime endAt, Long excludeShiftId) {
-        var dayStart = startAt.atZoneSameInstant(SCHEDULE_ZONE).toLocalDate().atStartOfDay(SCHEDULE_ZONE).toInstant().atOffset(startAt.getOffset());
-        var dayEnd = dayStart.plusDays(1);
+        // Local Stockholm midnights (DST-safe: never +/- fixed 24h), and the
+        // window covers EVERY day the shift touches (overnight shifts too):
+        // from the start day's midnight to the day AFTER the last touched day.
+        var dayStart = startAt.atZoneSameInstant(SCHEDULE_ZONE).toLocalDate().atStartOfDay(SCHEDULE_ZONE).toInstant().atOffset(ZoneOffset.UTC);
+        var windowEnd = endAt.atZoneSameInstant(SCHEDULE_ZONE).toLocalDate().plusDays(1).atStartOfDay(SCHEDULE_ZONE).toInstant().atOffset(ZoneOffset.UTC);
+        var dayEnd = windowEnd.isAfter(dayStart) ? windowEnd : dayStart.plusDays(1);
 
         List<ScheduleShift> sameDay = shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(userId, dayEnd, dayStart);
         // On create (excludeShiftId == null) any same-day shift conflicts;

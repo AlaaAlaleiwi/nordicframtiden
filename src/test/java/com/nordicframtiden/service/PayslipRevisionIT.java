@@ -9,7 +9,14 @@ import java.util.UUID;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Bean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -17,7 +24,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=validate")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import({PayslipFreezeService.class, SalaryAdjustmentService.class, PayslipRevisionIT.JsonConfig.class})
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 @ActiveProfiles("test")
 class PayslipRevisionIT {
   @Autowired PayslipFreezeService service;
@@ -25,11 +35,16 @@ class PayslipRevisionIT {
   @Autowired PayslipRevisionRepository revisions;
   @Autowired AppUserRepository users;
   @Autowired JdbcTemplate jdbc;
-  @Autowired TransactionTemplate transactions;
+  @Autowired PlatformTransactionManager transactionManager;
+  TransactionTemplate transactions;
+  @TestConfiguration static class JsonConfig {
+    @Bean com.fasterxml.jackson.databind.ObjectMapper objectMapper() { return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(); }
+  }
   @MockitoBean PayrollService payroll;
   Long userId;
   NetSalaryResponse original;
   @BeforeEach void setup() {
+    transactions = new TransactionTemplate(transactionManager);
     AppUser user = new AppUser(); user.setUsername("payroll-test-" + UUID.randomUUID()); user.setPasswordHash("unused");
     userId = users.saveAndFlush(user).getId();
     original = new NetSalaryResponse(userId, "2026-08", new BigDecimal("200"), new BigDecimal("100"), new BigDecimal("20000"),
@@ -43,6 +58,33 @@ class PayslipRevisionIT {
   PayslipFreezeService.Correction change() {
     return new PayslipFreezeService.Correction(1, "Missed allowance", new BigDecimal("100"), BigDecimal.ZERO,
         new BigDecimal("30"), BigDecimal.ZERO, BigDecimal.ZERO);
+  }
+  @Test void migrationPreservesLegacyPayloadExactly() {
+    jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+      String schema = "payroll_migration_" + UUID.randomUUID().toString().replace("-", "");
+      try (var sql = connection.createStatement()) {
+        sql.execute("create schema " + schema);
+        try {
+          sql.execute("set search_path to " + schema);
+          for (String file : List.of("V30__create_payslip_snapshot.sql", "V44__immutable_payslip_revisions.sql")) {
+            try (var resource = getClass().getResourceAsStream("/db/migration/" + file)) {
+              sql.execute(new String(resource.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            } catch (java.io.IOException e) { throw new IllegalStateException(e); }
+            if (file.startsWith("V30")) sql.execute("insert into payslip_snapshot (user_id, year, month, role, payload) values (7, 2026, 8, 'USER', '{  \"legacy\": true  }')");
+          }
+          try (var rows = sql.executeQuery("select s.payload = r.payload as same, r.actor, r.revision from payslip_snapshot s join payslip_revision r on r.snapshot_id = s.id")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getBoolean("same")).isTrue();
+            assertThat(rows.getString("actor")).isEqualTo("legacy-import");
+            assertThat(rows.getInt("revision")).isEqualTo(1);
+          }
+        } finally {
+          sql.execute("set search_path to public");
+          sql.execute("drop schema " + schema + " cascade");
+        }
+      }
+      return null;
+    });
   }
   @Test void databaseRejectsRewritesAndAccountDeletionCascades() {
     service.finalizePayslip(userId, 2026, 8, "USER", "first");
