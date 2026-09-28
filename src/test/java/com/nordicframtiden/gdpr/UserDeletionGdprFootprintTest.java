@@ -72,7 +72,7 @@ class UserDeletionGdprFootprintTest {
         staffShiftRepo, availabilityRequestRepo, callHistoryRepo, chatRoomRepo,
         chatMessageRepo, chatAttachmentRepo, payslipSnapshotRepo,
         chatRoomMemberRepo, chatReactionRepo, pushSubscriptionRepo,
-        resetTokenRepo, profileDocumentRepo, adminService);
+        resetTokenRepo, profileDocumentRepo, null, adminService);
 
     pharmacist = new AppUser();
     pharmacist.setId(7L);
@@ -136,7 +136,7 @@ class UserDeletionGdprFootprintTest {
         staffShiftRepo, availabilityRequestRepo, callHistoryRepo, chatRoomRepo,
         chatMessageRepo, chatAttachmentRepo, payslipSnapshotRepo,
         chatRoomMemberRepo, chatReactionRepo, pushSubscriptionRepo,
-        resetTokenRepo, profileDocumentRepo, null);
+        resetTokenRepo, profileDocumentRepo, null, null);
     pharmacist.setRoles(new java.util.HashSet<>(java.util.Set.of(Role.ADMIN)));
 
     org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,

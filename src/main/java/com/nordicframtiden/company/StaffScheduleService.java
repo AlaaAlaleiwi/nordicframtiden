@@ -16,10 +16,16 @@ public class StaffScheduleService {
 
   private final StaffShiftRepository repo;
   private final AppUserRepository userRepo;
+  /** Nullable: unit tests construct the service without the policy. */
+  private final com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy;
 
-  public StaffScheduleService(StaffShiftRepository repo, AppUserRepository userRepo) {
+  public StaffScheduleService(
+      StaffShiftRepository repo,
+      AppUserRepository userRepo,
+      com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy) {
     this.repo = repo;
     this.userRepo = userRepo;
+    this.deletionPolicy = deletionPolicy;
   }
 
   public List<StaffShift> listRange(OffsetDateTime start, OffsetDateTime end, Long userId) {
@@ -63,6 +69,12 @@ public class StaffScheduleService {
     var user = userRepo.findById(userId)
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
+    // Deletion policy: with an open deletion request only the current and
+    // next month (already booked, payroll) may receive new shifts.
+    if (deletionPolicy != null) {
+      deletionPolicy.assertShiftsAllowed(user.getId(), startAt);
+    }
+
     var s = new StaffShift();
     s.setUser(user);
     s.setStartAt(startAt);
@@ -75,6 +87,12 @@ public class StaffScheduleService {
   @Transactional
   public StaffShift update(Long id, Long userId, OffsetDateTime startAt, OffsetDateTime endAt, String note) {
     var s = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Shift not found"));
+
+    if (deletionPolicy != null && (userId != null || startAt != null)) {
+      deletionPolicy.assertShiftsAllowed(
+          userId != null ? userId : s.getUser().getId(),
+          startAt != null ? startAt : s.getStartAt());
+    }
 
     if (userId != null) {
       var user = userRepo.findById(userId)

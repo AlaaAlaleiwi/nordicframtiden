@@ -20,16 +20,29 @@ public class ScheduleService {
     private final PharmacyRepository pharmacyRepo;
     private final AppUserRepository userRepo;
     private final UserService userService; // ✅ use service
+    /** Nullable: unit tests construct the service without the policy. */
+    private final com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy;
 
     public ScheduleService(
             ScheduleShiftRepository shiftRepo,
             PharmacyRepository pharmacyRepo,
             AppUserRepository userRepo,
             UserService userService) {
+        this(shiftRepo, pharmacyRepo, userRepo, userService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ScheduleService(
+            ScheduleShiftRepository shiftRepo,
+            PharmacyRepository pharmacyRepo,
+            AppUserRepository userRepo,
+            UserService userService,
+            com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy) {
         this.shiftRepo = shiftRepo;
         this.pharmacyRepo = pharmacyRepo;
         this.userRepo = userRepo;
         this.userService = userService;
+        this.deletionPolicy = deletionPolicy;
     }
 
     public List<ScheduleShift> listForUser(Long userId, Instant start, Instant end) {
@@ -66,6 +79,12 @@ public class ScheduleService {
 
         AppUser user = userRepo.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        // Deletion policy: with an open deletion request only the current and
+        // next month (already booked, payroll) may receive new shifts.
+        if (deletionPolicy != null) {
+            deletionPolicy.assertShiftsAllowed(user.getId(), startAt);
+        }
 
         Pharmacy pharmacy = pharmacyRepo.findById(pharmacyId)
                 .orElseThrow(() -> new IllegalArgumentException("Pharmacy not found"));
@@ -115,7 +134,14 @@ public class ScheduleService {
         if (userId != null) {
             AppUser user = userRepo.findById(userId)
                     .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            // Deletion policy applies when the move lands beyond the payroll window.
+            if (deletionPolicy != null) {
+                deletionPolicy.assertShiftsAllowed(user.getId(),
+                        startAt != null ? startAt : s.getStartAt());
+            }
             s.setUser(user);
+        } else if (deletionPolicy != null && (startAt != null)) {
+            deletionPolicy.assertShiftsAllowed(s.getUser().getId(), startAt);
         }
 
         if (startAt != null)

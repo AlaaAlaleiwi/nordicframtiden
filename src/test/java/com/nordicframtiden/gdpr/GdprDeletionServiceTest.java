@@ -45,13 +45,16 @@ class GdprDeletionServiceTest {
   @Mock private UserService userService;
   @Mock private EmailService emailService;
   @Mock private GdprService gdprService;
+  @Mock private com.nordicframtiden.pharmacy.ScheduleShiftRepository scheduleShifts;
+  @Mock private com.nordicframtiden.company.StaffShiftRepository staffShifts;
 
   private GdprDeletionService service;
   private AppUser user;
 
   @BeforeEach
   void setUp() {
-    service = new GdprDeletionService(requests, userRepo, profileRepo, userService, emailService, gdprService);
+    service = new GdprDeletionService(requests, userRepo, profileRepo, userService, emailService, gdprService,
+        new DeletionPolicy(requests, scheduleShifts, staffShifts));
     user = new AppUser();
     user.setId(7L);
     user.setUsername("pharm");
@@ -132,15 +135,22 @@ class GdprDeletionServiceTest {
   }
 
   @Test
-  void approve_rejects_dates_sooner_than_the_grace_period() {
+  void approve_clamps_dates_sooner_than_the_policy_floor() {
     GdprDeletionRequest pending = new GdprDeletionRequest(7L, "pharm", "anna@example.com", null);
     when(requests.findById(1L)).thenReturn(Optional.of(pending));
-    LocalDate tooSoon = LocalDate.now(java.time.ZoneId.of("Europe/Stockholm"))
-        .plusDays(GdprDeletionRequest.MIN_GRACE_DAYS - 1);
+    when(requests.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    when(profileRepo.findByUserId(7L)).thenReturn(Optional.of(profileWithEmail("anna@example.com")));
+    when(emailService.sendGdprDeletionScheduledEmail(anyString(), anyString(), any())).thenReturn(true);
+    LocalDate tooSoon = LocalDate.now(java.time.ZoneId.of("Europe/Stockholm")).plusDays(10);
 
-    assertThatThrownBy(() -> service.approve(1L, "boss", tooSoon))
-        .isInstanceOf(IllegalArgumentException.class);
-    verify(requests, never()).save(any());
+    GdprDeletionRequest approved = service.approve(1L, "boss", tooSoon);
+
+    // Clamped to the policy floor (no shifts -> MIN_GRACE_DAYS out), never rejected.
+    assertThat(approved.getScheduledDate())
+        .isEqualTo(LocalDate.now(java.time.ZoneId.of("Europe/Stockholm"))
+            .plusDays(GdprDeletionRequest.MIN_GRACE_DAYS));
+    verify(emailService).sendGdprDeletionScheduledEmail(
+        "anna@example.com", "Anna Andersson", approved.getScheduledDate());
   }
 
   @Test

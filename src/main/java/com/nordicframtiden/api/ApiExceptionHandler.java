@@ -25,6 +25,18 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
   }
 
+  /** 409: new shifts beyond the payroll window while a deletion request is open. */
+  @ExceptionHandler(com.nordicframtiden.gdpr.DeletionShiftBlockException.class)
+  public ResponseEntity<?> handleDeletionShiftBlock(com.nordicframtiden.gdpr.DeletionShiftBlockException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
+  }
+
+  /** 409: direct user deletion blocked by the payroll deletion policy. */
+  @ExceptionHandler(com.nordicframtiden.gdpr.UserDeletionBlockedException.class)
+  public ResponseEntity<?> handleUserDeletionBlocked(com.nordicframtiden.gdpr.UserDeletionBlockedException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
+  }
+
   // Return a proper 500 (with a JSON body) for database-level failures so
   // clients never see them disguised as other status codes.
   @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)

@@ -55,6 +55,8 @@ public class UserService {
   private final com.nordicframtiden.documents.ProfileDocumentRepository profileDocuments;
   /** Nullable: unit tests exercise the pharmacist path without it. */
   private final com.nordicframtiden.admin.AdminService adminService;
+  /** Nullable: unit tests construct UserService without the policy. */
+  private final com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy;
 
   public UserService(AppUserRepository userRepo, UserProfileRepository profileRepo, PasswordEncoder encoder, EmailService emailService,
                      StaffShiftRepository staffShifts, AvailabilityRequestRepository availabilityRequests,
@@ -68,7 +70,7 @@ public class UserService {
                      com.nordicframtiden.documents.ProfileDocumentRepository profileDocuments) {
     this(userRepo, profileRepo, encoder, emailService, staffShifts, availabilityRequests,
         callHistory, chatRooms, chatMessages, chatAttachments, payslipSnapshots,
-        chatRoomMembers, chatReactions, pushSubscriptions, resetTokens, profileDocuments, null);
+        chatRoomMembers, chatReactions, pushSubscriptions, resetTokens, profileDocuments, null, null);
   }
 
   /** Production constructor: ADMIN targets delegate to the admin cleanup path. */
@@ -83,6 +85,7 @@ public class UserService {
                      com.nordicframtiden.chat.ChatPushSubscriptionRepository pushSubscriptions,
                      com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokens,
                      com.nordicframtiden.documents.ProfileDocumentRepository profileDocuments,
+                     com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy,
                      @org.springframework.context.annotation.Lazy com.nordicframtiden.admin.AdminService adminService) {
     this.userRepo = userRepo;
     this.profileRepo = profileRepo;
@@ -101,6 +104,7 @@ public class UserService {
     this.resetTokens = resetTokens;
     this.profileDocuments = profileDocuments;
     this.adminService = adminService;
+    this.deletionPolicy = deletionPolicy;
   }
 
   // ---------- Records ----------
@@ -119,7 +123,8 @@ public class UserService {
       Long photoId,
       Set<Permission> permissions,
       String password,
-      boolean admin
+      boolean admin,
+      com.nordicframtiden.gdpr.DeletionPolicy.Info deletionPolicy
   ) {}
 
   public record DetailedUser(
@@ -135,7 +140,8 @@ public class UserService {
       String municipalityCode,
       Long photoId,
       Set<Permission> permissions,
-      boolean admin
+      boolean admin,
+      com.nordicframtiden.gdpr.DeletionPolicy.Info deletionPolicy
   ) {}
 
   /** Photo id for a user, or null when they have no photo. */
@@ -198,7 +204,8 @@ public class UserService {
         profile != null ? profile.getMunicipalityCode() : null,
         photoId(u),
         safePerms(u.getPermissions()),
-        u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
+        u.getRoles() != null && u.getRoles().contains(Role.ADMIN),
+        deletionPolicy == null ? null : deletionPolicy.infoFor(u.getId())
     );
   }
 
@@ -218,7 +225,8 @@ public class UserService {
           profile != null ? profile.getMunicipalityCode() : null,
           photoId(u),
           safePerms(u.getPermissions()),
-          u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
+          u.getRoles() != null && u.getRoles().contains(Role.ADMIN),
+        deletionPolicy == null ? null : deletionPolicy.infoFor(u.getId())
       );
         })
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -241,7 +249,8 @@ public class UserService {
           photoId(u),
           safePerms(u.getPermissions()),
           null,
-          u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
+          u.getRoles() != null && u.getRoles().contains(Role.ADMIN),
+        deletionPolicy == null ? null : deletionPolicy.infoFor(u.getId())
       );
     }).toList();
   }
@@ -319,7 +328,8 @@ public class UserService {
         photoId(u),
         safePerms(u.getPermissions()),
         rawPassword,
-        u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
+        u.getRoles() != null && u.getRoles().contains(Role.ADMIN),
+        deletionPolicy == null ? null : deletionPolicy.infoFor(u.getId())
     );
   }
 
@@ -401,7 +411,8 @@ public class UserService {
         photoId(u),
         safePerms(u.getPermissions()),
         null,
-        u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
+        u.getRoles() != null && u.getRoles().contains(Role.ADMIN),
+        deletionPolicy == null ? null : deletionPolicy.infoFor(u.getId())
     );
   }
 
@@ -451,6 +462,17 @@ public class UserService {
       }
       adminService.deleteAdmin(id);
       return;
+    }
+
+    // Direct deletion guard: while the user has shifts in the current month
+    // they still work this month and get paid next month — deleting now would
+    // wipe the payroll records. Send the admin to the deletion-request flow
+    // instead; it schedules the deletion after the last payroll month.
+    if (deletionPolicy != null && deletionPolicy.hasShiftsInCurrentMonth(id)) {
+      throw new com.nordicframtiden.gdpr.UserDeletionBlockedException(
+          "Radering blockerad: användaren har arbetspass den här månaden och får sin lön nästa månad. "
+              + "Använd raderingsbegäranden i stället — raderingen schemaläggs automatiskt "
+              + "efter sista lönemånaden.");
     }
 
     // Delete dependent rows whose foreign keys lack ON DELETE CASCADE,
@@ -513,7 +535,8 @@ public class UserService {
         photoId(u),
         safePerms(u.getPermissions()),
         rawPassword,
-        u.getRoles() != null && u.getRoles().contains(Role.ADMIN)
+        u.getRoles() != null && u.getRoles().contains(Role.ADMIN),
+        deletionPolicy == null ? null : deletionPolicy.infoFor(u.getId())
     );
   }
 

@@ -37,6 +37,7 @@ public class GdprDeletionService {
   private final UserService userService;
   private final EmailService emailService;
   private final GdprService gdprService;
+  private final DeletionPolicy deletionPolicy;
 
   public GdprDeletionService(
       GdprDeletionRequestRepository requests,
@@ -44,13 +45,15 @@ public class GdprDeletionService {
       UserProfileRepository profileRepo,
       UserService userService,
       EmailService emailService,
-      GdprService gdprService) {
+      GdprService gdprService,
+      DeletionPolicy deletionPolicy) {
     this.requests = requests;
     this.userRepo = userRepo;
     this.profileRepo = profileRepo;
     this.userService = userService;
     this.emailService = emailService;
     this.gdprService = gdprService;
+    this.deletionPolicy = deletionPolicy;
   }
 
   // ---------- Data subject ----------
@@ -118,11 +121,17 @@ public class GdprDeletionService {
     if (!GdprDeletionRequest.STATUS_PENDING.equals(request.getStatus())) {
       throw new IllegalStateException("Only pending requests can be approved");
     }
+    // Policy floor: the deletion never lands before the end of the user's
+    // last payroll month. A null or earlier date is clamped to the
+    // suggestion; admins may postpone freely. The MIN_GRACE_DAYS check stays
+    // as a backstop for edge cases where the suggestion itself is too close.
+    LocalDate effective = deletionPolicy.effectiveApprovalDate(request.getUserId(), scheduledDate);
     LocalDate earliest = LocalDate.now(ZONE).plusDays(GdprDeletionRequest.MIN_GRACE_DAYS);
-    if (scheduledDate == null || scheduledDate.isBefore(earliest)) {
+    if (effective.isBefore(earliest)) {
       throw new IllegalArgumentException(
           "Scheduled date must be at least " + GdprDeletionRequest.MIN_GRACE_DAYS + " days out");
     }
+    scheduledDate = effective;
     request.setStatus(GdprDeletionRequest.STATUS_APPROVED);
     request.setScheduledDate(scheduledDate);
     request.setApprovedBy(adminUsername);
@@ -197,6 +206,34 @@ public class GdprDeletionService {
   @Transactional(readOnly = true)
   public List<GdprDeletionRequest> allRequests() {
     return requests.findTop50ByOrderByCreatedAtDesc();
+  }
+
+  /** A queue row enriched with the per-user deletion policy info. */
+  public record DeletionRequestWithPolicy(
+      Long id,
+      Long userId,
+      String username,
+      String email,
+      String status,
+      String reason,
+      LocalDate scheduledDate,
+      java.time.Instant createdAt,
+      DeletionPolicy.Info info) {}
+
+  /**
+   * The admin review queue with policy info: suggested deletion date (end of
+   * the last payroll month), the shift-block window and whether the user has
+   * shifts in the current month — everything the queue UI needs to prefill
+   * and explain the schedule.
+   */
+  @Transactional(readOnly = true)
+  public List<DeletionRequestWithPolicy> allRequestsWithPolicy() {
+    return allRequests().stream()
+        .map(r -> new DeletionRequestWithPolicy(
+            r.getId(), r.getUserId(), r.getUsername(), r.getEmail(), r.getStatus(),
+            r.getReason(), r.getScheduledDate(), r.getCreatedAt(),
+            deletionPolicy.infoFor(r.getUserId())))
+        .toList();
   }
 
   @Transactional(readOnly = true)

@@ -157,6 +157,17 @@ public class GdprController {
     return deletionService.allRequests();
   }
 
+  /**
+   * ADMIN: the review queue enriched with the per-user deletion policy —
+   * suggested deletion date (end of the last payroll month), shift-block
+   * window and current-month shift presence for the queue UI.
+   */
+  @GetMapping("/deletion-requests/policy")
+  @PreAuthorize("hasRole('ADMIN')")
+  public List<GdprDeletionService.DeletionRequestWithPolicy> allDeletionRequestsWithPolicy() {
+    return deletionService.allRequestsWithPolicy();
+  }
+
   /** ADMIN: approve with a scheduled execution date (>= 30 days out). */
   @PostMapping("/deletion-requests/{id}/approve")
   @PreAuthorize("hasRole('ADMIN')")
