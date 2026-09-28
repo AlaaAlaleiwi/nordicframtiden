@@ -16,6 +16,8 @@ import java.util.List;
 @Service
 public class ScheduleService {
 
+    /** Stockholm clock for the past-shift lock (test override). */
+    private final java.time.Clock clock;
     private final ScheduleShiftRepository shiftRepo;
     private final PharmacyRepository pharmacyRepo;
     private final AppUserRepository userRepo;
@@ -28,7 +30,7 @@ public class ScheduleService {
             PharmacyRepository pharmacyRepo,
             AppUserRepository userRepo,
             UserService userService) {
-        this(shiftRepo, pharmacyRepo, userRepo, userService, null);
+        this(shiftRepo, pharmacyRepo, userRepo, userService, null, java.time.Clock.system(ShiftLockPolicy.ZONE));
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -37,12 +39,18 @@ public class ScheduleService {
             PharmacyRepository pharmacyRepo,
             AppUserRepository userRepo,
             UserService userService,
-            com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy) {
+            com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy,
+            java.time.Clock clock) {
         this.shiftRepo = shiftRepo;
         this.pharmacyRepo = pharmacyRepo;
         this.userRepo = userRepo;
         this.userService = userService;
         this.deletionPolicy = deletionPolicy;
+        this.clock = clock;
+    }
+
+    private java.time.LocalDate today() {
+        return java.time.LocalDate.now(clock);
     }
 
     public List<ScheduleShift> listForUser(Long userId, Instant start, Instant end) {
@@ -79,6 +87,11 @@ public class ScheduleService {
 
         AppUser user = userRepo.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        // Past-shift lock: no new shifts on days that have already passed.
+        if (ShiftLockPolicy.isLocked(startAt, today())) {
+            throw new ShiftLockedException(ShiftLockPolicy.pastCreationMessage(startAt));
+        }
 
         // Deletion policy: with an open deletion request only the current and
         // next month (already booked, payroll) may receive new shifts.
@@ -125,6 +138,11 @@ public class ScheduleService {
         ScheduleShift s = shiftRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Shift not found"));
 
+        // Past-shift lock: already-worked shifts cannot be changed or removed.
+        if (ShiftLockPolicy.isLocked(s.getStartAt(), today())) {
+            throw new ShiftLockedException(ShiftLockPolicy.lockedMessage(s.getStartAt()));
+        }
+
         if (pharmacyId != null) {
             Pharmacy pharmacy = pharmacyRepo.findById(pharmacyId)
                     .orElseThrow(() -> new IllegalArgumentException("Pharmacy not found"));
@@ -142,6 +160,11 @@ public class ScheduleService {
             s.setUser(user);
         } else if (deletionPolicy != null && (startAt != null)) {
             deletionPolicy.assertShiftsAllowed(s.getUser().getId(), startAt);
+        }
+
+        // Past-shift lock: moving a shift into the past is a history edit too.
+        if (ShiftLockPolicy.isLocked(s.getStartAt(), today())) {
+            throw new ShiftLockedException(ShiftLockPolicy.lockedMessage(s.getStartAt()));
         }
 
         if (startAt != null)
@@ -162,6 +185,12 @@ public class ScheduleService {
 
     @Transactional
     public void delete(Long id) {
+        // Past-shift lock: already-worked shifts cannot be removed.
+        ScheduleShift s = shiftRepo.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Shift not found"));
+        if (ShiftLockPolicy.isLocked(s.getStartAt(), today())) {
+            throw new ShiftLockedException(ShiftLockPolicy.lockedMessage(s.getStartAt()));
+        }
         shiftRepo.deleteById(id);
     }
 

@@ -65,10 +65,10 @@ class ScheduleServiceConflictTest {
 
         ShiftConflictException ex = assertThrows(ShiftConflictException.class, () ->
             service.create(1L, 7L,
-                utc("2026-02-15T09:00:00Z"), utc("2026-02-15T17:00:00Z"), null));
+                utc("2027-02-15T09:00:00Z"), utc("2027-02-15T17:00:00Z"), null));
 
         assertTrue(ex.getMessage().contains("redan ett arbetspass"), "clear Swedish message");
-        assertTrue(ex.getMessage().contains("2026"), "message mentions the day");
+        assertTrue(ex.getMessage().contains("2027"), "message mentions the day");
     }
 
     @Test
@@ -82,7 +82,7 @@ class ScheduleServiceConflictTest {
         when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ScheduleShift created = service.create(1L, 7L,
-            utc("2026-02-15T09:00:00Z"), utc("2026-02-15T17:00:00Z"), null);
+            utc("2027-02-15T09:00:00Z"), utc("2027-02-15T17:00:00Z"), null);
 
         assertEquals(u, created.getUser());
     }
@@ -90,7 +90,7 @@ class ScheduleServiceConflictTest {
     @Test
     void conflictCheckUsesTheStockholmDayWindow() {
         // 09:00Z in February = 10:00 Stockholm time → day window must be
-        // 2026-02-15T00:00+01:00 .. 2026-02-16T00:00+01:00 (i.e. 23:00Z bounds).
+        // 2027-02-15T00:00+01:00 .. 2026-02-16T00:00+01:00 (i.e. 23:00Z bounds).
         AppUser u = user();
         when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
@@ -100,14 +100,14 @@ class ScheduleServiceConflictTest {
         lenient().when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.create(1L, 7L,
-            utc("2026-02-15T09:00:00Z"), utc("2026-02-15T17:00:00Z"), null);
+            utc("2027-02-15T09:00:00Z"), utc("2027-02-15T17:00:00Z"), null);
 
         ArgumentCaptor<OffsetDateTime> start = ArgumentCaptor.forClass(OffsetDateTime.class);
         ArgumentCaptor<OffsetDateTime> end = ArgumentCaptor.forClass(OffsetDateTime.class);
         verify(shiftRepo).findByUserIdAndStartAtLessThanAndEndAtGreaterThan(
             org.mockito.ArgumentMatchers.eq(7L), end.capture(), start.capture());
-        assertEquals(utc("2026-02-14T23:00:00Z").toInstant(), start.getValue().toInstant());
-        assertEquals(utc("2026-02-15T23:00:00Z").toInstant(), end.getValue().toInstant());
+        assertEquals(utc("2027-02-14T23:00:00Z").toInstant(), start.getValue().toInstant());
+        assertEquals(utc("2027-02-15T23:00:00Z").toInstant(), end.getValue().toInstant());
     }
 
     @Test
@@ -116,8 +116,8 @@ class ScheduleServiceConflictTest {
         ScheduleShift existing = org.mockito.Mockito.mock(ScheduleShift.class);
         when(existing.getId()).thenReturn(42L);
         when(existing.getUser()).thenReturn(u);
-        when(existing.getStartAt()).thenReturn(utc("2026-02-15T10:00:00Z"));
-        when(existing.getEndAt()).thenReturn(utc("2026-02-15T18:00:00Z"));
+        when(existing.getStartAt()).thenReturn(utc("2027-02-15T10:00:00Z"));
+        when(existing.getEndAt()).thenReturn(utc("2027-02-15T18:00:00Z"));
         when(shiftRepo.findById(42L)).thenReturn(Optional.of(existing));
         when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
@@ -127,7 +127,7 @@ class ScheduleServiceConflictTest {
         when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ScheduleShift updated = service.update(42L, 1L, 7L,
-            utc("2026-02-15T10:00:00Z"), utc("2026-02-15T18:00:00Z"), null);
+            utc("2027-02-15T10:00:00Z"), utc("2027-02-15T18:00:00Z"), null);
 
         assertEquals(42L, updated.getId());
     }
@@ -138,8 +138,8 @@ class ScheduleServiceConflictTest {
         ScheduleShift existing = org.mockito.Mockito.mock(ScheduleShift.class);
         lenient().when(existing.getId()).thenReturn(42L);
         when(existing.getUser()).thenReturn(u);
-        when(existing.getStartAt()).thenReturn(utc("2026-03-01T10:00:00Z"));
-        when(existing.getEndAt()).thenReturn(utc("2026-03-01T18:00:00Z"));
+        when(existing.getStartAt()).thenReturn(utc("2027-03-01T10:00:00Z"));
+        when(existing.getEndAt()).thenReturn(utc("2027-03-01T18:00:00Z"));
         when(shiftRepo.findById(42L)).thenReturn(Optional.of(existing));
         when(userRepo.findById(7L)).thenReturn(Optional.of(u));
         when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
@@ -149,6 +149,6 @@ class ScheduleServiceConflictTest {
 
         assertThrows(ShiftConflictException.class, () ->
             service.update(42L, 1L, 7L,
-                utc("2026-03-01T10:00:00Z"), utc("2026-03-01T18:00:00Z"), null));
+                utc("2027-03-01T10:00:00Z"), utc("2027-03-01T18:00:00Z"), null));
     }
 }

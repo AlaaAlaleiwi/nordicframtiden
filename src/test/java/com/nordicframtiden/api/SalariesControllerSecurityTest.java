@@ -62,6 +62,39 @@ class SalariesControllerSecurityTest {
 
     @Test
     @WithMockUser(roles = "USER")
+    void ordinaryUserCannotReadOrChangePayrollRevisions() throws Exception {
+        mvc.perform(get("/api/salaries/payslip/revisions").param("userId", "42").param("year", "2026").param("month", "8"))
+            .andExpect(status().isForbidden());
+        for (String action : List.of("finalize", "corrections")) {
+            mvc.perform(post("/api/salaries/payslip/" + action).with(csrf())
+                .param("userId", "42").param("year", "2026").param("month", "8")
+                .contentType("application/json").content("{}"))
+                .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
+    @WithMockUser(username = "payroll-operator", authorities = "PERM_SALARIES")
+    void finalizationUsesAuthenticatedActor() throws Exception {
+        mvc.perform(post("/api/salaries/payslip/finalize").with(csrf())
+            .param("userId", "42").param("year", "2026").param("month", "8"))
+            .andExpect(status().isOk());
+        verify(payslipFreezeService).finalizePayslip(42L, 2026, 8, "USER", "payroll-operator");
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void staleCorrectionReturnsConflict() throws Exception {
+        when(payslipFreezeService.correct(eq(42L), eq(2026), eq(8), eq("USER"), any(), any()))
+            .thenThrow(new com.nordicframtiden.service.PayslipConflictException("Reload the payslip"));
+        mvc.perform(post("/api/salaries/payslip/corrections").with(csrf())
+            .param("userId", "42").param("year", "2026").param("month", "8")
+            .contentType("application/json").content("{}"))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
     void userCannotReadAnotherUsersPayslip() throws Exception {
         mvc.perform(get("/api/salaries/payslip")
                 .param("userId", "42").param("year", "2026").param("month", "8"))

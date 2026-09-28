@@ -31,6 +31,12 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
   }
 
+  /** 409: past shifts are locked (cannot be changed or removed). */
+  @ExceptionHandler(com.nordicframtiden.pharmacy.ShiftLockedException.class)
+  public ResponseEntity<?> handleShiftLocked(com.nordicframtiden.pharmacy.ShiftLockedException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
+  }
+
   /** 409: direct user deletion blocked by the payroll deletion policy. */
   @ExceptionHandler(com.nordicframtiden.gdpr.UserDeletionBlockedException.class)
   public ResponseEntity<?> handleUserDeletionBlocked(com.nordicframtiden.gdpr.UserDeletionBlockedException ex) {

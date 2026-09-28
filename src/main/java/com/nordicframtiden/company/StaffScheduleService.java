@@ -18,14 +18,22 @@ public class StaffScheduleService {
   private final AppUserRepository userRepo;
   /** Nullable: unit tests construct the service without the policy. */
   private final com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy;
+  /** Stockholm clock for the past-shift lock (test override). */
+  private final java.time.Clock clock;
 
   public StaffScheduleService(
       StaffShiftRepository repo,
       AppUserRepository userRepo,
-      com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy) {
+      com.nordicframtiden.gdpr.DeletionPolicy deletionPolicy,
+      java.time.Clock clock) {
     this.repo = repo;
     this.userRepo = userRepo;
     this.deletionPolicy = deletionPolicy;
+    this.clock = clock;
+  }
+
+  private java.time.LocalDate today() {
+    return java.time.LocalDate.now(clock);
   }
 
   public List<StaffShift> listRange(OffsetDateTime start, OffsetDateTime end, Long userId) {
@@ -66,6 +74,12 @@ public class StaffScheduleService {
     if (!startAt.isBefore(endAt))
       throw new IllegalArgumentException("startAt must be before endAt");
 
+    // Past-shift lock: no new shifts on days that have already passed.
+    if (com.nordicframtiden.pharmacy.ShiftLockPolicy.isLocked(startAt, today())) {
+      throw new com.nordicframtiden.pharmacy.ShiftLockedException(
+          com.nordicframtiden.pharmacy.ShiftLockPolicy.pastCreationMessage(startAt));
+    }
+
     var user = userRepo.findById(userId)
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -87,6 +101,12 @@ public class StaffScheduleService {
   @Transactional
   public StaffShift update(Long id, Long userId, OffsetDateTime startAt, OffsetDateTime endAt, String note) {
     var s = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Shift not found"));
+
+    // Past-shift lock: already-worked shifts cannot be changed or removed.
+    if (com.nordicframtiden.pharmacy.ShiftLockPolicy.isLocked(s.getStartAt(), today())) {
+      throw new com.nordicframtiden.pharmacy.ShiftLockedException(
+          com.nordicframtiden.pharmacy.ShiftLockPolicy.lockedMessage(s.getStartAt()));
+    }
 
     if (deletionPolicy != null && (userId != null || startAt != null)) {
       deletionPolicy.assertShiftsAllowed(
@@ -115,6 +135,12 @@ public class StaffScheduleService {
 
   @Transactional
   public void delete(Long id) {
+    // Past-shift lock: already-worked shifts cannot be removed.
+    var s = repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Shift not found"));
+    if (com.nordicframtiden.pharmacy.ShiftLockPolicy.isLocked(s.getStartAt(), today())) {
+      throw new com.nordicframtiden.pharmacy.ShiftLockedException(
+          com.nordicframtiden.pharmacy.ShiftLockPolicy.lockedMessage(s.getStartAt()));
+    }
     repo.deleteById(id);
   }
 }
