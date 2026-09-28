@@ -7,7 +7,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "call_history")
-class CallHistory {
+public class CallHistory {
   @Id @Column(name = "call_id") private UUID callId;
   @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "room_id")
   private ChatRoom room;

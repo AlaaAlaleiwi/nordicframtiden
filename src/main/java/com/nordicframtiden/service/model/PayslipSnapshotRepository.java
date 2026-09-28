@@ -1,11 +1,15 @@
 package com.nordicframtiden.service.model;
 
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface PayslipSnapshotRepository extends JpaRepository<PayslipSnapshot, Long> {
 
   Optional<PayslipSnapshot> findByUserIdAndYearAndMonthAndRole(Long userId, Integer year, Integer month, String role);
+
+  /** All frozen payslips for the account — GDPR data export. */
+  List<PayslipSnapshot> findByUserId(Long userId);
 
   void deleteByUserIdAndYearAndMonthAndRole(Long userId, Integer year, Integer month, String role);
 

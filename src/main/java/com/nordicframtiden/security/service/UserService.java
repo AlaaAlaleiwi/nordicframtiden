@@ -42,12 +42,26 @@ public class UserService {
   // would otherwise leave orphan rows behind.
   private final com.nordicframtiden.chat.ChatAttachmentRepository chatAttachments;
   private final com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshots;
+  // GDPR Art. 17 completeness: tables referencing the user that the original
+  // deletion path missed (memberships, reactions, push tokens, reset tokens,
+  // profile documents). Their leftover rows either block the delete (FK) or
+  // keep personal data alive after erasure.
+  private final com.nordicframtiden.chat.ChatRoomMemberRepository chatRoomMembers;
+  private final com.nordicframtiden.chat.ChatReactionRepository chatReactions;
+  private final com.nordicframtiden.chat.ChatPushSubscriptionRepository pushSubscriptions;
+  private final com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokens;
+  private final com.nordicframtiden.documents.ProfileDocumentRepository profileDocuments;
 
   public UserService(AppUserRepository userRepo, UserProfileRepository profileRepo, PasswordEncoder encoder, EmailService emailService,
                      StaffShiftRepository staffShifts, AvailabilityRequestRepository availabilityRequests,
                      CallHistoryRepository callHistory, ChatRoomRepository chatRooms, ChatMessageRepository chatMessages,
                      com.nordicframtiden.chat.ChatAttachmentRepository chatAttachments,
-                     com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshots) {
+                     com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshots,
+                     com.nordicframtiden.chat.ChatRoomMemberRepository chatRoomMembers,
+                     com.nordicframtiden.chat.ChatReactionRepository chatReactions,
+                     com.nordicframtiden.chat.ChatPushSubscriptionRepository pushSubscriptions,
+                     com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokens,
+                     com.nordicframtiden.documents.ProfileDocumentRepository profileDocuments) {
     this.userRepo = userRepo;
     this.profileRepo = profileRepo;
     this.encoder = encoder;
@@ -59,6 +73,11 @@ public class UserService {
     this.chatMessages = chatMessages;
     this.chatAttachments = chatAttachments;
     this.payslipSnapshots = payslipSnapshots;
+    this.chatRoomMembers = chatRoomMembers;
+    this.chatReactions = chatReactions;
+    this.pushSubscriptions = pushSubscriptions;
+    this.resetTokens = resetTokens;
+    this.profileDocuments = profileDocuments;
   }
 
   // ---------- Records ----------
@@ -405,11 +424,19 @@ public class UserService {
     // Delete dependent rows whose foreign keys lack ON DELETE CASCADE,
     // otherwise the final delete fails (staff_shift, availability_request,
     // call_history, chat_message, chat_room.created_by).
+    chatRooms.deleteByCreatedBy(u);
+    chatMessages.deleteBySender(u);
+    // GDPR Art. 17: every other table referencing the account — reactions
+    // and memberships (FKs that would block the delete), push tokens, reset
+    // tokens and profile documents (orphaned personal data otherwise).
+    chatReactions.deleteByUser(u);
+    chatRoomMembers.deleteByUserId(id);
+    pushSubscriptions.deleteByUser(u);
+    resetTokens.deleteByUserId(id);
+    profileDocuments.deleteByUserId(id);
     staffShifts.deleteByUser(u);
     availabilityRequests.deleteByUser(u);
     callHistory.deleteByCaller(u);
-    chatRooms.deleteByCreatedBy(u);
-    chatMessages.deleteBySender(u);
     // FK-less tables: no FK to app_user, so nothing cascades — clean up or
     // orphan rows remain (attachments the user uploaded, frozen payslips).
     chatAttachments.deleteByUploaderId(id);

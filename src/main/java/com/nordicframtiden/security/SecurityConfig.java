@@ -51,6 +51,11 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/chat/**", "/ws/chat").authenticated()
 
+                        // GDPR self-service: every authenticated account manages
+                        // its own consents, export and erasure.
+                        .requestMatchers("/api/gdpr/me", "/api/gdpr/me/**").authenticated()
+                        .requestMatchers("/api/gdpr/users/*").hasRole("ADMIN")
+
                         .requestMatchers("/api/salaries/payslip/me", "/api/salaries/me/**").authenticated()
                         .requestMatchers("/api/salaries/**")
                         .hasAnyAuthority("ROLE_ADMIN", "PERM_SALARIES")

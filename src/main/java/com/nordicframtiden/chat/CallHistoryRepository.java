@@ -18,5 +18,8 @@ public interface CallHistoryRepository extends JpaRepository<CallHistory, UUID> 
       """)
   List<CallHistory> findForUser(@Param("username") String username, Pageable pageable);
 
+  /** All calls the account placed — GDPR data export. */
+  List<CallHistory> findByCaller(com.nordicframtiden.security.model.AppUser caller);
+
   void deleteByCaller(com.nordicframtiden.security.model.AppUser caller);
 }
