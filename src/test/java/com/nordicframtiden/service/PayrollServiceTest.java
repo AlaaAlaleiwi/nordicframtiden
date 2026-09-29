@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -21,6 +22,37 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PayrollServiceTest {
+
+  @Test
+  void monthWithoutShiftsReturnsZeroWithoutLookingUpTaxForZeroIncome() {
+    UserService userService = mock(UserService.class);
+    TaxService taxService = mock(TaxService.class);
+    ScheduleService scheduleService = mock(ScheduleService.class);
+    StaffScheduleService staffScheduleService = mock(StaffScheduleService.class);
+    SalaryAdjustmentService adjustmentService = mock(SalaryAdjustmentService.class);
+    OneTimeTaxService oneTimeTaxService = mock(OneTimeTaxService.class);
+    PayrollService payrollService = new PayrollService(
+        userService, taxService, scheduleService, staffScheduleService, adjustmentService, oneTimeTaxService);
+
+    UserProfile profile = new UserProfile();
+    profile.setHourlyCost(BigDecimal.valueOf(200));
+    profile.setYearOfBirth(1990);
+    profile.setMunicipalityCode("0180");
+    when(userService.getProfileByUserId(7L)).thenReturn(profile);
+    when(scheduleService.listForUser(eq(7L), any(), any())).thenReturn(List.of());
+    when(adjustmentService.forMonth(7L, 2026, 8)).thenReturn(List.of());
+    when(adjustmentService.annualOneTimeTotal(7L, 2026)).thenReturn(BigDecimal.ZERO);
+    when(taxService.resolveTaxColumn(1990, 2026)).thenReturn(1);
+    when(taxService.resolveTableNumber("0180", 2026)).thenReturn(30);
+
+    var payslip = payrollService.netSalaryForUserMonth(7L, 2026, 8);
+
+    assertEquals(new BigDecimal("0.00"), payslip.totalHours());
+    assertEquals(new BigDecimal("0.00"), payslip.grossSalary());
+    assertEquals(new BigDecimal("0.00"), payslip.preliminaryTax());
+    assertEquals(new BigDecimal("0.00"), payslip.netSalary());
+    verify(taxService, never()).lookupPreliminaryTax(anyInt(), anyInt(), anyInt(), anyInt());
+  }
 
   @Test
   void pharmacistPayslipShowsSaturdayAndSundayObSeparately() {

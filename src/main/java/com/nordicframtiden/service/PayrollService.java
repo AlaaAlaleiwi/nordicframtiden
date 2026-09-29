@@ -162,7 +162,10 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     BigDecimal oneTime=items.stream().filter(a->a.getTaxTreatment()==com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE).map(a->a.getAmount()).reduce(BigDecimal.ZERO,BigDecimal::add);
     BigDecimal taxFree=items.stream().map(adjustmentService::taxFreePortion).reduce(BigDecimal.ZERO,BigDecimal::add);
     BigDecimal monthlyTaxable=baseGross.add(regular);
-    int regularTaxInt=taxService.lookupPreliminaryTax(year,table,column,monthlyTaxable.setScale(0,RoundingMode.HALF_UP).intValue());
+    int regularTaxInt = monthlyTaxable.signum() == 0
+        ? 0
+        : taxService.lookupPreliminaryTax(
+            year, table, column, monthlyTaxable.setScale(0, RoundingMode.HALF_UP).intValue());
     BigDecimal annualOneTime=adjustmentOverrides == null
         ? adjustmentService.annualOneTimeTotal(userId,year)
         : adjustmentService.annualOneTimeTotalExcludingMonth(userId,year,month).add(oneTime);
