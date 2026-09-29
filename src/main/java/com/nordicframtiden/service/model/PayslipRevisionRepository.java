@@ -17,4 +17,7 @@ public interface PayslipRevisionRepository extends JpaRepository<PayslipRevision
 
   List<PayslipRevision> findBySnapshotIdOrderByRevisionAsc(Long snapshotId);
   Optional<PayslipRevision> findTopBySnapshotIdOrderByRevisionDesc(Long snapshotId);
+
+  /** Reopen-as-draft support: revisions die with their snapshot (also cascaded in DDL). */
+  void deleteAllBySnapshotId(Long snapshotId);
 }

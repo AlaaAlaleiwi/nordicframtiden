@@ -80,6 +80,31 @@ public class PayslipFreezeService {
     return finalizeInternal(userId, year, month, role, actor);
   }
 
+  /**
+   * Reopens an accidentally finalized payslip as a draft by removing the
+   * snapshot and its revision history (revisions are also removed explicitly
+   * so the operation never depends on cascade configuration). Guarded to the
+   * same windows as editing — the current month, or the previous month
+   * through the 20th — so closed payroll history can never be reopened here.
+   * Fix tool for snapshots created before the finalization-window check
+   * existed (e.g. a finalized current month, which silently locks every
+   * add-field/delete/save action in the apps).
+   */
+  @Transactional
+  public void unfinalize(Long userId, int year, int month, String role) {
+    requireEditablePeriod(year, month);
+    lock(userId, year, month, role);
+    reopenWithinEditableWindow(userId, year, month, role);
+  }
+
+  /** Deletes the frozen snapshot + revisions; caller has verified the editable window. */
+  private void reopenWithinEditableWindow(Long userId, int year, int month, String role) {
+    var existing = snapshot(userId, year, month, role);
+    if (existing.isEmpty()) return; // nothing to reopen — idempotent
+    revisions.deleteAllBySnapshotId(existing.get().getId());
+    snapshots.delete(existing.get());
+  }
+
   private Revision finalizeInternal(Long userId, int year, int month, String role, String actor) {
     lock(userId, year, month, role);
     var existing = snapshot(userId, year, month, role);
@@ -98,7 +123,13 @@ public class PayslipFreezeService {
       List<SalaryAdjustmentService.AdjustmentInput> inputs) {
     requireEditablePeriod(year, month);
     lock(userId, year, month, role);
+    // The editable window beats finalization: a month finalized inside the
+    // window (current month; previous month through the 20th) is reopened as
+    // a draft first, so fields stay addable/deletable/savable. Once the
+    // window closes, requireEditablePeriod refuses and the freeze stands.
     // Adjustments currently belong to a user/month, shared by USER and STAFF.
+    reopenWithinEditableWindow(userId, year, month, "USER");
+    reopenWithinEditableWindow(userId, year, month, "STAFF");
     requireDraft(userId, year, month, "USER");
     requireDraft(userId, year, month, "STAFF");
     adjustments.replace(userId, year, month, inputs == null ? List.of() : inputs);
@@ -109,7 +140,8 @@ public class PayslipFreezeService {
   public NetSalaryResponse preview(Long userId, int year, int month, String role, PayrollService.PreviewRequest request) {
     requireEditablePeriod(year, month);
     lock(userId, year, month, role);
-    requireDraft(userId, year, month, role);
+    // A frozen-but-editable month may be previewed (the UI computes live tax
+    // with unsaved adjustments); after the window closes this is refused.
     return payroll.previewForUserMonth(userId, year, month, role, request.hourlyCost(), request.adjustments());
   }
 

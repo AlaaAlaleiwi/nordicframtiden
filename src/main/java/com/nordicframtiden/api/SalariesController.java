@@ -126,6 +126,19 @@ public class SalariesController {
     return payslipFreezeService.finalizePayslip(userId, year, month, role, auth.getName());
   }
 
+  /**
+   * Reopen an accidentally finalized payslip as a draft (removes the snapshot
+   * + revisions). Allowed only for the current month, or the previous month
+   * through the 20th — the same windows as editing.
+   */
+  @DeleteMapping("/payslip/finalize")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
+  public ResponseEntity<Void> unfinalizePayslip(@RequestParam Long userId,
+      @RequestParam int year, @RequestParam int month, @RequestParam(defaultValue = "USER") String role) {
+    payslipFreezeService.unfinalize(userId, year, month, role);
+    return ResponseEntity.noContent().build();
+  }
+
   @PostMapping("/payslip/corrections")
   @PreAuthorize(CAN_MANAGE_SALARIES)
   public PayslipFreezeService.Revision correctPayslip(@RequestParam Long userId, @RequestParam int year,

@@ -191,9 +191,13 @@ class PayslipFreezeServiceTest {
     assertThat(revision.getValue().getActor()).isEqualTo("system-payroll-deadline");
     verify(users).lockForPayroll(7L);
   }
-  @Test void finalizedPreviewIsRejected() throws Exception {
+  @Test void previewWithinTheEditableWindowRunsEvenWhenFrozen() throws Exception {
+    // Window rule (2026-09-29): the editable window beats finalization —
+    // preview (live tax with unsaved adjustments) is allowed until the
+    // period closes; after the 20th it is refused like every other write.
     frozen("USER");
-    assertThatThrownBy(() -> service.preview(7L, 2026, 8, "USER", new PayrollService.PreviewRequest(null, null)))
+    var afterDeadline = serviceAt("2026-09-25T10:00:00Z");
+    assertThatThrownBy(() -> afterDeadline.preview(7L, 2026, 8, "USER", new PayrollService.PreviewRequest(null, null)))
         .isInstanceOf(PayslipConflictException.class);
     verifyNoInteractions(payroll);
   }
