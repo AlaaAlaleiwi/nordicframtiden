@@ -4,13 +4,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.service.model.*;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /** Draft calculations are live. Finalization and subsequent corrections are append-only. */
 @Service
@@ -21,15 +25,25 @@ public class PayslipFreezeService {
   private final SalaryAdjustmentService adjustments;
   private final AppUserRepository users;
   private final ObjectMapper json;
+  private final Clock clock;
 
+  @Autowired
   public PayslipFreezeService(PayslipSnapshotRepository snapshots, PayslipRevisionRepository revisions,
-      PayrollService payroll, SalaryAdjustmentService adjustments, AppUserRepository users, ObjectMapper json) {
+      PayrollService payroll, SalaryAdjustmentService adjustments, AppUserRepository users, ObjectMapper json,
+      Clock clock) {
     this.snapshots = snapshots;
     this.revisions = revisions;
     this.payroll = payroll;
     this.adjustments = adjustments;
     this.users = users;
     this.json = json;
+    this.clock = clock;
+  }
+
+  PayslipFreezeService(PayslipSnapshotRepository snapshots, PayslipRevisionRepository revisions,
+      PayrollService payroll, SalaryAdjustmentService adjustments, AppUserRepository users, ObjectMapper json) {
+    this(snapshots, revisions, payroll, adjustments, users, json,
+        Clock.system(ZoneId.of("Europe/Stockholm")));
   }
 
   public record Correction(Integer expectedRevision, String reason, BigDecimal regularGrossDelta,
@@ -38,15 +52,21 @@ public class PayslipFreezeService {
   public record Revision(int revision, String actor, Instant createdAt, String reason,
       Correction changes, NetSalaryResponse payslip) {}
 
-  @Transactional(readOnly = true)
+  @Transactional
   public NetSalaryResponse resolve(Long userId, int year, int month, String role) {
-    return snapshot(userId, year, month, role)
-        .map(s -> read(latest(s).getPayload(), NetSalaryResponse.class))
-        .orElseGet(() -> live(userId, year, month, role));
+    var existing = snapshot(userId, year, month, role);
+    if (existing.isPresent()) return read(latest(existing.get()).getPayload(), NetSalaryResponse.class);
+    if (isClosedPeriod(year, month)) {
+      return finalizeInternal(userId, year, month, role, "system-payroll-deadline").payslip();
+    }
+    return live(userId, year, month, role);
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public List<Revision> history(Long userId, int year, int month, String role) {
+    if (snapshot(userId, year, month, role).isEmpty() && isClosedPeriod(year, month)) {
+      finalizeInternal(userId, year, month, role, "system-payroll-deadline");
+    }
     return snapshot(userId, year, month, role).map(s -> {
       var rows = revisions.findBySnapshotIdOrderByRevisionAsc(s.getId());
       if (rows.isEmpty()) throw new PayslipConflictException("Finalized payslip history is missing; restore the stored record");
@@ -56,6 +76,11 @@ public class PayslipFreezeService {
 
   @Transactional
   public Revision finalizePayslip(Long userId, int year, int month, String role, String actor) {
+    requireFinalizationWindow(year, month);
+    return finalizeInternal(userId, year, month, role, actor);
+  }
+
+  private Revision finalizeInternal(Long userId, int year, int month, String role, String actor) {
     lock(userId, year, month, role);
     var existing = snapshot(userId, year, month, role);
     if (existing.isPresent()) return view(latest(existing.get())); // retry is idempotent
@@ -71,6 +96,7 @@ public class PayslipFreezeService {
   @Transactional
   public NetSalaryResponse saveAdjustments(Long userId, int year, int month, String role,
       List<SalaryAdjustmentService.AdjustmentInput> inputs) {
+    requireEditablePeriod(year, month);
     lock(userId, year, month, role);
     // Adjustments currently belong to a user/month, shared by USER and STAFF.
     requireDraft(userId, year, month, "USER");
@@ -81,6 +107,7 @@ public class PayslipFreezeService {
 
   @Transactional
   public NetSalaryResponse preview(Long userId, int year, int month, String role, PayrollService.PreviewRequest request) {
+    requireEditablePeriod(year, month);
     lock(userId, year, month, role);
     requireDraft(userId, year, month, role);
     return payroll.previewForUserMonth(userId, year, month, role, request.hourlyCost(), request.adjustments());
@@ -88,6 +115,7 @@ public class PayslipFreezeService {
 
   @Transactional
   public Revision correct(Long userId, int year, int month, String role, Correction change, String actor) {
+    requireEditablePeriod(year, month);
     lock(userId, year, month, role);
     PayslipSnapshot s = snapshot(userId, year, month, role)
         .orElseThrow(() -> new PayslipConflictException("Finalize the payslip before creating a correction"));
@@ -158,6 +186,32 @@ public class PayslipFreezeService {
   private Optional<PayslipSnapshot> snapshot(Long userId, int year, int month, String role) {
     YearMonth.of(year, month);
     return snapshots.findByUserIdAndYearAndMonthAndRole(userId, year, month, normalizeRole(role));
+  }
+  private void requireEditablePeriod(int year, int month) {
+    YearMonth target = YearMonth.of(year, month);
+    LocalDate today = LocalDate.now(clock);
+    YearMonth current = YearMonth.from(today);
+    boolean currentMonth = target.equals(current);
+    boolean previousBeforeDeadline = target.equals(current.minusMonths(1)) && today.getDayOfMonth() <= 20;
+    if (!currentMonth && !previousBeforeDeadline) {
+      throw new PayslipConflictException(
+          "Payroll period is closed. The previous month can be updated through the 20th of the payment month");
+    }
+  }
+  private void requireFinalizationWindow(int year, int month) {
+    LocalDate today = LocalDate.now(clock);
+    YearMonth target = YearMonth.of(year, month);
+    if (!target.equals(YearMonth.from(today).minusMonths(1)) || today.getDayOfMonth() > 20) {
+      throw new PayslipConflictException(
+          "Only the previous month's payslip can be finalized, through the 20th of the payment month");
+    }
+  }
+  private boolean isClosedPeriod(int year, int month) {
+    LocalDate today = LocalDate.now(clock);
+    YearMonth target = YearMonth.of(year, month);
+    YearMonth current = YearMonth.from(today);
+    return target.isBefore(current.minusMonths(1))
+        || (target.equals(current.minusMonths(1)) && today.getDayOfMonth() > 20);
   }
   private void lock(Long userId, int year, int month, String role) {
     YearMonth.of(year, month); normalizeRole(role);

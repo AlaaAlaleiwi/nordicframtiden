@@ -4,6 +4,9 @@ import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.service.model.*;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
@@ -13,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
@@ -40,6 +44,9 @@ class PayslipRevisionIT {
   TransactionTemplate transactions;
   @TestConfiguration static class JsonConfig {
     @Bean com.fasterxml.jackson.databind.ObjectMapper objectMapper() { return new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(); }
+    @Bean @Primary Clock payrollTestClock() {
+      return Clock.fixed(Instant.parse("2026-09-15T10:00:00Z"), ZoneId.of("Europe/Stockholm"));
+    }
   }
   @MockitoBean PayrollService payroll;
   Long userId;

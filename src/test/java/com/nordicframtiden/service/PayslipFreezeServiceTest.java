@@ -5,6 +5,9 @@ import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.service.model.*;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,11 +24,15 @@ class PayslipFreezeServiceTest {
   final SalaryAdjustmentService adjustments = mock(SalaryAdjustmentService.class);
   final AppUserRepository users = mock(AppUserRepository.class);
   final ObjectMapper json = new ObjectMapper();
-  final PayslipFreezeService service = new PayslipFreezeService(snapshots, revisions, payroll, adjustments, users, json);
+  final PayslipFreezeService service = serviceAt("2026-09-15T10:00:00Z");
   PayslipSnapshot snapshot;
   NetSalaryResponse original = new NetSalaryResponse(7L, "2026-08", bd("200"), bd("100"), bd("20000"),
       2026, "0180", 30, 1, bd("6000"), bd("14000"));
   static BigDecimal bd(String v) { return new BigDecimal(v); }
+  PayslipFreezeService serviceAt(String instant) {
+    return new PayslipFreezeService(snapshots, revisions, payroll, adjustments, users, json,
+        Clock.fixed(Instant.parse(instant), ZoneId.of("Europe/Stockholm")));
+  }
 
   @BeforeEach void setup() {
     when(users.lockForPayroll(7L)).thenReturn(Optional.of(new AppUser()));
@@ -152,6 +159,37 @@ class PayslipFreezeServiceTest {
     assertThat(service.saveAdjustments(7L, 2026, 8, "USER", List.of())).isEqualTo(original);
     verify(adjustments).replace(7L, 2026, 8, List.of());
     verify(snapshots, never()).saveAndFlush(any());
+  }
+  @Test void currentAndPreviousMonthsAreEditableThroughTheTwentieth() {
+    when(payroll.netSalaryForUserMonth(7L, 2026, 9)).thenReturn(original);
+    when(payroll.netSalaryForUserMonth(7L, 2026, 8)).thenReturn(original);
+    assertThat(service.saveAdjustments(7L, 2026, 9, "USER", List.of())).isEqualTo(original);
+    assertThat(service.saveAdjustments(7L, 2026, 8, "USER", List.of())).isEqualTo(original);
+  }
+  @Test void previousMonthClosesAfterTheTwentieth() {
+    var afterDeadline = serviceAt("2026-09-21T10:00:00Z");
+    assertThatThrownBy(() -> afterDeadline.saveAdjustments(7L, 2026, 8, "USER", List.of()))
+        .isInstanceOf(PayslipConflictException.class).hasMessageContaining("through the 20th");
+    assertThatThrownBy(() -> afterDeadline.preview(7L, 2026, 8, "USER",
+        new PayrollService.PreviewRequest(null, List.of())))
+        .isInstanceOf(PayslipConflictException.class).hasMessageContaining("closed");
+    verifyNoInteractions(adjustments);
+  }
+  @Test void readingPreviousMonthAfterDeadlineAutomaticallyFinalizesIt() {
+    var afterDeadline = serviceAt("2026-09-21T10:00:00Z");
+    when(payroll.netSalaryForUserMonth(7L, 2026, 8)).thenReturn(original);
+    when(snapshots.saveAndFlush(any())).thenAnswer(i -> {
+      PayslipSnapshot saved = i.getArgument(0);
+      ReflectionTestUtils.setField(saved, "id", 42L);
+      return saved;
+    });
+
+    assertThat(afterDeadline.resolve(7L, 2026, 8, "USER")).isEqualTo(original);
+
+    var revision = org.mockito.ArgumentCaptor.forClass(PayslipRevision.class);
+    verify(revisions).saveAndFlush(revision.capture());
+    assertThat(revision.getValue().getActor()).isEqualTo("system-payroll-deadline");
+    verify(users).lockForPayroll(7L);
   }
   @Test void finalizedPreviewIsRejected() throws Exception {
     frozen("USER");
