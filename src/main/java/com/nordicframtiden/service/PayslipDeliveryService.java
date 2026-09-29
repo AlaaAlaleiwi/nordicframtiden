@@ -275,6 +275,59 @@ public class PayslipDeliveryService {
         }
     }
 
+    /* ===================== Admin audit + resend ===================== */
+
+    /** One row of the admin audit listing. */
+    public record DeliveryRow(Long id, Long userId, String fullName, String email, int workYear,
+        int workMonth, String role, String status, int attempts, String lastError,
+        Instant claimedAt, Instant sentAt) {
+    }
+
+    /** Every delivery row for one work month, oldest first. */
+    @Transactional(readOnly = true)
+    public List<DeliveryRow> deliveriesForMonth(int workYear, int workMonth) {
+        return requests.findByWorkYearAndWorkMonthOrderByCreatedAtAsc(workYear, workMonth).stream()
+            .map(this::toRow)
+            .toList();
+    }
+
+    private DeliveryRow toRow(PayslipDeliveryRequest r) {
+        return new DeliveryRow(r.getId(), r.getUserId(), displayName(r.getUserId(), ""),
+            r.getEmail(), r.getWorkYear(), r.getWorkMonth(), r.getRole(), r.getStatus(),
+            r.getAttempts(), r.getLastError(), r.getClaimedAt(), r.getSentAt());
+    }
+
+    /**
+     * Admin resend: re-queues one finished/failed row for immediate delivery
+     * (the nightly queue is untouched; a PENDING/SENDING row is refused as it
+     * is already being handled, and a missing row is queued instead). Returns
+     * the number of rows actually queued (0 or 1).
+     */
+    @Transactional
+    public int resend(Long requestId) {
+        PayslipDeliveryRequest request = requests.findById(requestId)
+            .orElseThrow(() -> new IllegalArgumentException("Delivery request not found"));
+        if (PayslipDeliveryRequest.STATUS_PENDING.equals(request.getStatus())
+            || PayslipDeliveryRequest.STATUS_SENDING.equals(request.getStatus())) {
+            // Already queued or in flight — resending would risk a duplicate.
+            return 0;
+        }
+        request.setStatus(PayslipDeliveryRequest.STATUS_PENDING);
+        request.setLastError(null);
+        requests.save(request);
+        return 1;
+    }
+
+    /**
+     * Queues rows for every enabled USER/STAFF account missing one for
+     * {@code workMonth} (e.g. hired after the ready date, or a late profile
+     * email fix). Bounded by the same backstop as the nightly queue.
+     */
+    @Transactional
+    public int queueMissing(YearMonth workMonth) {
+        return queueForMonth(workMonth);
+    }
+
     /* ===================== Status for the frontends ===================== */
 
     /**

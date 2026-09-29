@@ -314,6 +314,87 @@ class PayslipDeliveryServiceTest {
         verify(users, never()).findAllByRole(any());
     }
 
+    /* ===================== Admin audit + resend ===================== */
+
+    @Test
+    void resend_requeuesAFailedRow_forImmediateDelivery() {
+        PayslipDeliveryRequest failed = new PayslipDeliveryRequest(7L, "anna@example.com", 2026, 8, "USER");
+        failed.setId(101L);
+        failed.setStatus(PayslipDeliveryRequest.STATUS_FAILED);
+        failed.setAttempts(PayslipDeliveryService.MAX_ATTEMPTS);
+        failed.setLastError("smtp down");
+        when(requests.findById(101L)).thenReturn(Optional.of(failed));
+        when(requests.findByStatusOrderByCreatedAtAsc(PayslipDeliveryRequest.STATUS_PENDING))
+            .thenReturn(List.of(failed));
+        when(requests.claimIfPending(eq(101L), any())).thenReturn(1);
+        when(requests.markSentIfSending(eq(101L), any())).thenReturn(1);
+        stubHappyPath();
+
+        int queued = service.resend(101L);
+        int delivered = service.deliverPending();
+
+        assertThat(queued).isEqualTo(1);
+        assertThat(delivered).isEqualTo(1);
+        assertThat(failed.getStatus()).isEqualTo(PayslipDeliveryRequest.STATUS_PENDING);
+        verify(requests).save(argThat(saved ->
+            saved.getStatus().equals(PayslipDeliveryRequest.STATUS_PENDING)
+                && saved.getLastError() == null));
+    }
+
+    @Test
+    void resend_refusesRowsAlreadyQueuedOrInFlight() {
+        PayslipDeliveryRequest pending = new PayslipDeliveryRequest(7L, "anna@example.com", 2026, 8, "USER");
+        pending.setId(102L);
+        pending.setStatus(PayslipDeliveryRequest.STATUS_PENDING);
+        when(requests.findById(102L)).thenReturn(Optional.of(pending));
+
+        assertThat(service.resend(102L)).isZero();
+        verify(requests, never()).save(any());
+
+        pending.setStatus(PayslipDeliveryRequest.STATUS_SENDING);
+        assertThat(service.resend(102L)).isZero();
+        verify(requests, never()).save(any());
+    }
+
+    @Test
+    void resend_throwsForUnknownRows() {
+        when(requests.findById(999L)).thenReturn(Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.resend(999L))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void deliveriesForMonth_mapsEveryRowWithTheResolvedName() {
+        PayslipDeliveryRequest sent = new PayslipDeliveryRequest(7L, "anna@example.com", 2026, 8, "USER");
+        sent.setStatus(PayslipDeliveryRequest.STATUS_SENT);
+        sent.setSentAt(Instant.now());
+        when(requests.findByWorkYearAndWorkMonthOrderByCreatedAtAsc(2026, 8)).thenReturn(List.of(sent));
+        when(profiles.findByUserId(7L)).thenReturn(Optional.of(profile));
+
+        List<PayslipDeliveryService.DeliveryRow> rows = service.deliveriesForMonth(2026, 8);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).id()).isEqualTo(sent.getId());
+        assertThat(rows.get(0).fullName()).isEqualTo("Anna Andersson");
+        assertThat(rows.get(0).status()).isEqualTo("SENT");
+        assertThat(rows.get(0).email()).isEqualTo("anna@example.com");
+    }
+
+    @Test
+    void queueMissing_reusesTheBackstoppedQueue() {
+        when(users.findAllByRole(Role.USER)).thenReturn(List.of(user));
+        when(users.findAllByRole(Role.STAFF)).thenReturn(List.of());
+        when(profiles.findByUserId(7L)).thenReturn(Optional.of(profile));
+        when(requests.findByUserIdAndWorkYearAndWorkMonthAndRole(7L, 2026, 8, "USER"))
+            .thenReturn(Optional.empty());
+
+        int queued = service.queueMissing(YearMonth.of(2026, 8));
+
+        assertThat(queued).isEqualTo(1);
+        verify(requests).save(any(PayslipDeliveryRequest.class));
+    }
+
     @Test
     void lastDelivered_returnsTheLatestSentMonth() {
         PayslipDeliveryRequest sent = new PayslipDeliveryRequest(7L, "anna@example.com", 2026, 8, "USER");

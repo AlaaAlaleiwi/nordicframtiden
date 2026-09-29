@@ -24,6 +24,9 @@ public interface PayslipDeliveryRequestRepository
   Optional<PayslipDeliveryRequest> findFirstByUserIdAndRoleAndStatusOrderByWorkYearDescWorkMonthDescSentAtDesc(
       Long userId, String role, String status);
 
+  /** Audit listing for one work month, oldest first. */
+  List<PayslipDeliveryRequest> findByWorkYearAndWorkMonthOrderByCreatedAtAsc(int workYear, int workMonth);
+
   /**
    * Exactly-once claim: flips a single PENDING row to SENDING and reports
    * whether this worker won it. Rows claimed by another worker return 0, so

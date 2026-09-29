@@ -195,7 +195,7 @@ public NetSalaryResponse payslipForStaff(
    * Self-service readiness info for the salary screens: when the previous
    * work month's payslip was automatically emailed/announced (the 21st or
    * previous working day), and which work month was delivered last.
-   */
+ */
   @GetMapping("/payslip/ready-status")
   @PreAuthorize("isAuthenticated()")
   public Map<String, Object> payslipReadyStatus(Authentication auth) {
@@ -213,6 +213,40 @@ public NetSalaryResponse payslipForStaff(
         "workMonth", workMonth.toString(),
         "lastDeliveredMonth", delivered.map(java.time.YearMonth::toString).orElse(null)
     );
+  }
+
+  /* ===================== Admin audit + resend ===================== */
+
+  /** Audit listing: every auto-delivery row for one work month. */
+  @GetMapping("/payslip/deliveries")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
+  public List<PayslipDeliveryService.DeliveryRow> payslipDeliveries(
+      @RequestParam int year, @RequestParam int month) {
+    return payslipDeliveryService.deliveriesForMonth(year, month);
+  }
+
+  /** Re-queues one finished/failed delivery and sends it immediately. */
+  @PostMapping("/payslip/deliveries/{id}/resend")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
+  public Map<String, Object> resendPayslipDelivery(@PathVariable Long id) {
+    int queued = payslipDeliveryService.resend(id);
+    if (queued == 0) {
+      return Map.of("queued", false, "reason",
+          "Already queued or currently being delivered");
+    }
+    boolean sent = payslipDeliveryService.deliverPending() > 0;
+    return Map.of("queued", true, "sent", sent);
+  }
+
+  /** Queues rows for every eligible account missing one for the month. */
+  @PostMapping("/payslip/deliveries/queue-missing")
+  @PreAuthorize(CAN_MANAGE_SALARIES)
+  public Map<String, Object> queueMissingPayslipDeliveries(
+      @RequestParam int year, @RequestParam int month) {
+    YearMonth.of(year, month); // validates the month range
+    int queued = payslipDeliveryService.queueMissing(java.time.YearMonth.of(year, month));
+    boolean sent = payslipDeliveryService.deliverPending() > 0;
+    return Map.of("queued", queued, "sent", sent);
   }
 
   private static double round2(double v) {
