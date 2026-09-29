@@ -74,8 +74,10 @@ public record UpdatePharmacyRequest(
   }
 }
   @GetMapping
-  public List<PharmacyResponse> list() {
-    return service.list().stream().map(PharmacyResponse::from).toList();
+  public org.springframework.http.ResponseEntity<List<PharmacyResponse>> list() {
+    return org.springframework.http.ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofHours(12)).cachePublic())
+        .body(service.list().stream().map(PharmacyResponse::from).toList());
   }
 
   @PostMapping

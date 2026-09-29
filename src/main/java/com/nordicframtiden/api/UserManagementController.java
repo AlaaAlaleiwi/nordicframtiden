@@ -133,7 +133,9 @@ public class UserManagementController {
 
     var username = auth.getName();
     var user = userService.getDetailedByUsername(username);
-    return ResponseEntity.ok(toResponse(user, null));
+    return ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(5)).cachePrivate())
+        .body(toResponse(user, null));
   }
 
   @PutMapping("/me")

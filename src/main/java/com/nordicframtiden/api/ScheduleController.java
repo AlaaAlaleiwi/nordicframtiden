@@ -52,7 +52,7 @@ public class ScheduleController {
 
   // ✅ pharmacist gets own schedule
   @GetMapping("/me")
-  public List<EventDto> mySchedules(@RequestParam OffsetDateTime start,
+  public org.springframework.http.ResponseEntity<List<EventDto>> mySchedules(@RequestParam OffsetDateTime start,
       @RequestParam OffsetDateTime end,
       Authentication auth) {
 
@@ -76,7 +76,9 @@ public class ScheduleController {
         })
         .toList();
 
-    return res;
+    return org.springframework.http.ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(5)).cachePrivate())
+        .body(res);
   }
 
   // ✅ admin listing

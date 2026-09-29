@@ -358,8 +358,10 @@ public NetSalaryResponse payslipForStaff(
 
   @GetMapping("/me/years")
   @PreAuthorize("isAuthenticated()")
-  public List<YearRow> myYears(Authentication auth) {
-    return yearsForUser(currentUserId(auth));
+  public ResponseEntity<List<YearRow>> myYears(Authentication auth) {
+    return ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofDays(1)).cachePrivate())
+        .body(yearsForUser(currentUserId(auth)));
   }
 
   private List<YearRow> yearsForUser(Long userId) {
@@ -384,8 +386,10 @@ public NetSalaryResponse payslipForStaff(
 
   @GetMapping("/me/months")
   @PreAuthorize("isAuthenticated()")
-  public List<MonthRow> myMonths(@RequestParam int year, Authentication auth) {
-    return monthsForUser(currentUserId(auth), year);
+  public ResponseEntity<List<MonthRow>> myMonths(@RequestParam int year, Authentication auth) {
+    return ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofHours(1)).cachePrivate())
+        .body(monthsForUser(currentUserId(auth), year));
   }
 
   private List<MonthRow> monthsForUser(Long userId, int year) {

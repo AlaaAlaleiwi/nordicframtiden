@@ -26,14 +26,16 @@ class CallIceController {
   }
 
   @GetMapping("/ice-servers")
-  List<IceServer> iceServers() {
+  org.springframework.http.ResponseEntity<List<IceServer>> iceServers() {
     var result = new ArrayList<IceServer>();
     result.add(new IceServer(List.of("stun:stun.l.google.com:19302"), null, null));
     var urls = commaSeparated(turnUrls);
     if (!urls.isEmpty() && !turnUsername.isBlank() && !turnCredential.isBlank()) {
       result.add(new IceServer(urls, turnUsername, turnCredential));
     }
-    return result;
+    return org.springframework.http.ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofHours(6)))
+        .body(result);
   }
 
   private List<String> commaSeparated(String value) {
