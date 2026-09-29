@@ -61,6 +61,7 @@ class AdminDeletionFootprintTest {
     @Mock private AvailabilityRequestRepository availabilityRequestRepo;
     @Mock private com.nordicframtiden.chat.ChatAttachmentRepository chatAttachmentRepo;
     @Mock private com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshotRepo;
+    @Mock private com.nordicframtiden.service.model.PayslipDeliveryRequestRepository payslipDeliveryRequestRepo;
     @Mock private com.nordicframtiden.documents.ProfileDocumentRepository profileDocumentRepo;
     @Mock private com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokenRepo;
 
@@ -76,6 +77,7 @@ class AdminDeletionFootprintTest {
             profileDocumentRepo,
             chatAttachmentRepo,
             payslipSnapshotRepo,
+            payslipDeliveryRequestRepo,
             chatRoomMemberRepo,
             resetTokenRepo);
 

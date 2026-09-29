@@ -56,7 +56,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/gdpr/me", "/api/gdpr/me/**").authenticated()
                         .requestMatchers("/api/gdpr/users/*").hasRole("ADMIN")
 
-                        .requestMatchers("/api/salaries/payslip/me", "/api/salaries/me/**").authenticated()
+                        .requestMatchers("/api/salaries/payslip/me", "/api/salaries/payslip/ready-status", "/api/salaries/me/**").authenticated()
                         .requestMatchers("/api/salaries/**")
                         .hasAnyAuthority("ROLE_ADMIN", "PERM_SALARIES")
 

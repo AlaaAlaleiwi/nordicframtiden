@@ -7,6 +7,7 @@ import com.nordicframtiden.pharmacy.ScheduleShiftRepository;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;
+import com.nordicframtiden.service.PayslipDeliveryService;
 import com.nordicframtiden.service.PayslipFreezeService;
 import com.nordicframtiden.service.SalaryAdjustmentService;
 import com.nordicframtiden.service.model.NetSalaryResponse;
@@ -39,6 +40,7 @@ public class SalariesController {
   private final PayslipFreezeService payslipFreezeService;
   private final EmailService emailService;
   private final SalaryAdjustmentService adjustmentService;
+  private final PayslipDeliveryService payslipDeliveryService;
 
   public SalariesController(
       ScheduleShiftRepository shiftRepo,
@@ -47,7 +49,8 @@ public class SalariesController {
       AppUserRepository userRepo,
       PayrollService payrollService,
       PayslipFreezeService payslipFreezeService,
-      EmailService emailService, SalaryAdjustmentService adjustmentService
+      EmailService emailService, SalaryAdjustmentService adjustmentService,
+      PayslipDeliveryService payslipDeliveryService
   ) {
     this.shiftRepo = shiftRepo;
     this.staffShiftRepo = staffShiftRepo;
@@ -57,6 +60,7 @@ public class SalariesController {
     this.payslipFreezeService = payslipFreezeService;
     this.emailService = emailService;
     this.adjustmentService = adjustmentService;
+    this.payslipDeliveryService = payslipDeliveryService;
   }
 
   /* ===================== DTOs ===================== */
@@ -185,6 +189,30 @@ public NetSalaryResponse payslipForStaff(
       Authentication auth
   ) {
     return payslipFreezeService.resolve(currentUserId(auth), year, month, "USER");
+  }
+
+  /**
+   * Self-service readiness info for the salary screens: when the previous
+   * work month's payslip was automatically emailed/announced (the 21st or
+   * previous working day), and which work month was delivered last.
+   */
+  @GetMapping("/payslip/ready-status")
+  @PreAuthorize("isAuthenticated()")
+  public Map<String, Object> payslipReadyStatus(Authentication auth) {
+    java.time.LocalDate today = java.time.LocalDate.now();
+    java.time.YearMonth payoutMonth = java.time.YearMonth.from(today);
+    java.time.YearMonth workMonth = payoutMonth.minusMonths(1);
+    java.time.LocalDate readyDate = payslipDeliveryService.readyDateFor(payoutMonth);
+
+    boolean ready = !today.isBefore(readyDate);
+    var delivered = payslipDeliveryService.lastDelivered(currentUserId(auth), "USER");
+
+    return Map.of(
+        "ready", ready,
+        "readyDate", readyDate.toString(),
+        "workMonth", workMonth.toString(),
+        "lastDeliveredMonth", delivered.map(java.time.YearMonth::toString).orElse(null)
+    );
   }
 
   private static double round2(double v) {

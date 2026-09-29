@@ -49,6 +49,7 @@ public class AdminService {
     private final com.nordicframtiden.documents.ProfileDocumentRepository profileDocumentRepo;
     private final com.nordicframtiden.chat.ChatAttachmentRepository chatAttachmentRepo;
     private final com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshotRepo;
+    private final com.nordicframtiden.service.model.PayslipDeliveryRequestRepository payslipDeliveryRequestRepo;
     private final com.nordicframtiden.chat.ChatRoomMemberRepository chatRoomMemberRepo;
     private final com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokenRepo;
 
@@ -68,6 +69,7 @@ public class AdminService {
                        com.nordicframtiden.documents.ProfileDocumentRepository profileDocumentRepo,
                        com.nordicframtiden.chat.ChatAttachmentRepository chatAttachmentRepo,
                        com.nordicframtiden.service.model.PayslipSnapshotRepository payslipSnapshotRepo,
+                       com.nordicframtiden.service.model.PayslipDeliveryRequestRepository payslipDeliveryRequestRepo,
                        com.nordicframtiden.chat.ChatRoomMemberRepository chatRoomMemberRepo,
                        com.nordicframtiden.security.repo.PasswordResetTokenRepository resetTokenRepo) {
         this.repo = repo;
@@ -86,6 +88,7 @@ public class AdminService {
         this.profileDocumentRepo = profileDocumentRepo;
         this.chatAttachmentRepo = chatAttachmentRepo;
         this.payslipSnapshotRepo = payslipSnapshotRepo;
+        this.payslipDeliveryRequestRepo = payslipDeliveryRequestRepo;
         this.chatRoomMemberRepo = chatRoomMemberRepo;
         this.resetTokenRepo = resetTokenRepo;
     }
@@ -400,6 +403,9 @@ public class AdminService {
         chatAttachmentRepo.deleteByUploaderId(id);
         // Frozen payslip snapshots (no FK; avoid orphan rows).
         payslipSnapshotRepo.deleteByUserId(id);
+        // Automatic payslip delivery queue/audit rows (FK cascades, but keep
+        // the explicit sweep in line with the other payroll data).
+        payslipDeliveryRequestRepo.deleteByUserId(id);
         // Reactions by this user and call history they started.
         chatReactionRepo.deleteByUser(user);
         callHistoryRepo.deleteByCaller(user);

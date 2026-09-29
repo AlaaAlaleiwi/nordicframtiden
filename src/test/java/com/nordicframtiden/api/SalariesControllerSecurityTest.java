@@ -58,6 +58,7 @@ class SalariesControllerSecurityTest {
     @MockitoBean PayslipFreezeService payslipFreezeService;
     @MockitoBean SalaryAdjustmentService adjustmentService;
     @MockitoBean EmailService emailService;
+    @MockitoBean com.nordicframtiden.service.PayslipDeliveryService payslipDeliveryService;
     @MockitoBean JwtService jwtService;
 
     @Test

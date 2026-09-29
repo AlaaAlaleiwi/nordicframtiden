@@ -73,6 +73,7 @@ class AdminServiceRoleFlowTest {
             org.mockito.Mockito.mock(com.nordicframtiden.documents.ProfileDocumentRepository.class),
             org.mockito.Mockito.mock(com.nordicframtiden.chat.ChatAttachmentRepository.class),
             org.mockito.Mockito.mock(com.nordicframtiden.service.model.PayslipSnapshotRepository.class),
+            org.mockito.Mockito.mock(com.nordicframtiden.service.model.PayslipDeliveryRequestRepository.class),
             chatRoomMemberRepo,
             resetTokenRepo);
     }
