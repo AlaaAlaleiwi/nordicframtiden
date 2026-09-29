@@ -266,7 +266,76 @@ public NetSalaryResponse payslipForStaff(
         ? staffShiftRepo.findInRange(start, end, null).stream().map(this::toStaffLine).toList()
         : shiftRepo.findInRange(start, end, null, null).stream().map(this::toUserLine).toList();
 
-    return summarizeByPharmacy(lines);
+    List<PharmacySummary> summaries = summarizeByPharmacy(lines);
+
+    // Payslip adjustment fields (bonuses, one-time pay, tax-free
+    // reimbursements) are part of the month's employer cost but live outside
+    // the shifts. Fold the work month's adjustment totals into the matching
+    // person so the salary lists agree with the payslip gross on all
+    // platforms. Tax-free adjustments count toward the cost too — they are
+    // pay, only the tax treatment differs.
+    if (adjustmentService != null) {
+      summaries = withPayslipAdjustments(summaries, lines, start, end);
+    }
+    return summaries;
+  }
+
+  /**
+   * Adds each person's payslip adjustment total for the work month(s) covered
+   * by [start, end) to their user summary (and the pharmacy totals).
+   */
+  private List<PharmacySummary> withPayslipAdjustments(
+      List<PharmacySummary> summaries, List<ShiftLine> lines,
+      OffsetDateTime start, OffsetDateTime end) {
+    // Work months covered by the requested window (the end is exclusive —
+    // clients request exactly one calendar month; multiple are handled anyway).
+    java.util.Set<java.time.YearMonth> months = new java.util.HashSet<>();
+    java.time.OffsetDateTime cursor = start;
+    while (cursor.isBefore(end) && months.size() < 24) {
+      months.add(java.time.YearMonth.from(cursor));
+      cursor = cursor.plusMonths(1);
+    }
+    if (months.isEmpty()) return summaries;
+
+    // userId -> adjustment total for the covered work months. Adjustments
+    // are role-less (shared per user + work month); the peopleInRole check
+    // below keeps them out of the other role's view.
+    Map<Long, BigDecimal> adjustmentTotals = new java.util.HashMap<>();
+    for (java.time.YearMonth ym : months) {
+      for (var adjustment : adjustmentService.forMonth(ym.getYear(), ym.getMonthValue())) {
+        BigDecimal amount = adjustment.getAmount() == null ? BigDecimal.ZERO : adjustment.getAmount();
+        adjustmentTotals.merge(adjustment.getUserId(), amount, BigDecimal::add);
+      }
+    }
+    if (adjustmentTotals.isEmpty()) return summaries;
+
+    // Restrict to people who actually appear in the requested role's shifts.
+    java.util.Set<Long> peopleInRole = lines.stream()
+        .map(ShiftLine::userId).collect(java.util.stream.Collectors.toSet());
+
+    List<PharmacySummary> updated = new ArrayList<>(summaries.size());
+    for (PharmacySummary pharmacy : summaries) {
+      List<UserSummary> users = new ArrayList<>(pharmacy.users().size());
+      double totalHours = 0;
+      BigDecimal totalCost = BigDecimal.ZERO;
+      for (UserSummary user : pharmacy.users()) {
+        BigDecimal extra = peopleInRole.contains(user.userId())
+            ? adjustmentTotals.getOrDefault(user.userId(), BigDecimal.ZERO)
+            : BigDecimal.ZERO;
+        double hours = user.hours();
+        BigDecimal cost = user.totalCost().add(extra);
+        BigDecimal hourly = hours > 0
+            ? cost.divide(BigDecimal.valueOf(hours), 2, RoundingMode.HALF_UP)
+            : user.hourlyCost();
+        users.add(new UserSummary(user.userId(), user.fullName(), hours, hourly, cost));
+        totalHours += hours;
+        totalCost = totalCost.add(cost);
+      }
+      users.sort((a, b) -> b.totalCost().compareTo(a.totalCost()));
+      updated.add(new PharmacySummary(pharmacy.pharmacyId(), pharmacy.pharmacyName(), totalHours, totalCost, users));
+    }
+    updated.sort((a, b) -> b.totalCost().compareTo(a.totalCost()));
+    return updated;
   }
 
   /* ===================== REPORT ===================== */

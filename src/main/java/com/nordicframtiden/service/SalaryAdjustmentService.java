@@ -13,6 +13,8 @@ public class SalaryAdjustmentService {
   private final com.nordicframtiden.service.model.PayslipRevisionRepository revisions;
   public SalaryAdjustmentService(SalaryAdjustmentRepository repository, com.nordicframtiden.service.model.PayslipRevisionRepository revisions){this.repository=repository;this.revisions=revisions;}
   public List<SalaryAdjustment> forMonth(Long userId,int year,int month){return repository.findByUserIdAndYearAndMonthOrderById(userId,year,month);}
+  /** Every adjustment in one work month, across users (monthly salary totals). */
+  public List<SalaryAdjustment> forMonth(int year,int month){return repository.findByYearAndMonthOrderById(year,month);}
   public BigDecimal annualOneTimeTotal(Long userId,int year){return repository.findByUserIdAndYear(userId,year).stream().filter(a->a.getTaxTreatment()==SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE).map(SalaryAdjustment::getAmount).reduce(BigDecimal.ZERO,BigDecimal::add).add(revisions.annualOneTimeCorrectionTotal(userId,year,0));}
   /** Annual one-time total for the year excluding the given month (used by the live preview, which supplies that month's unsaved values itself). */
   public BigDecimal annualOneTimeTotalExcludingMonth(Long userId,int year,int month){return repository.findByUserIdAndYearAndMonthNot(userId,year,month).stream().filter(a->a.getTaxTreatment()==SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE).map(SalaryAdjustment::getAmount).reduce(BigDecimal.ZERO,BigDecimal::add).add(revisions.annualOneTimeCorrectionTotal(userId,year,month));}

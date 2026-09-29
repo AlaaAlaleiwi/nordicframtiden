@@ -193,6 +193,74 @@ class SalariesControllerSecurityTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
+    void monthlyTotalsIncludePayslipAdjustmentFields() throws Exception {
+        // One shift line: 10 h × 200 kr = 2000 kr base cost.
+        com.nordicframtiden.company.StaffShift shift =
+            mock(com.nordicframtiden.company.StaffShift.class);
+        com.nordicframtiden.security.model.AppUser user =
+            mock(com.nordicframtiden.security.model.AppUser.class);
+        when(user.getId()).thenReturn(42L);
+        when(user.getUsername()).thenReturn("staffer");
+        when(shift.getUser()).thenReturn(user);
+        when(shift.getStartAt()).thenReturn(java.time.OffsetDateTime.parse("2026-08-03T08:00:00Z"));
+        when(shift.getEndAt()).thenReturn(java.time.OffsetDateTime.parse("2026-08-03T18:00:00Z"));
+        when(staffShiftRepo.findInRange(any(), any(), eq(null))).thenReturn(List.of(shift));
+        UserProfile profile = new UserProfile();
+        profile.setFullName("Staff Person");
+        profile.setHourlyCost(new BigDecimal("200"));
+        when(profileRepo.findByUserId(42L)).thenReturn(Optional.of(profile));
+
+        // One saved payslip adjustment field: +500 kr bonus for the same month.
+        com.nordicframtiden.service.model.SalaryAdjustment bonus =
+            new com.nordicframtiden.service.model.SalaryAdjustment();
+        bonus.setUserId(42L);
+        bonus.setYear(2026);
+        bonus.setMonth(8);
+        bonus.setName("Bonus");
+        bonus.setAmount(new BigDecimal("500"));
+        bonus.setTaxTreatment(com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE);
+        when(adjustmentService.forMonth(2026, 8)).thenReturn(List.of(bonus));
+
+        mvc.perform(get("/api/salaries/month")
+                .param("start", "2026-08-01T00:00:00Z")
+                .param("end", "2026-09-01T00:00:00Z")
+                .param("role", "STAFF"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].users[0].totalCost").value(2500.00))
+            .andExpect(jsonPath("$[0].totalCost").value(2500.00))
+            .andExpect(jsonPath("$[0].users[0].hourlyCost").value(250.00));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void monthlyTotalsStayUnchangedWithoutAdjustments() throws Exception {
+        com.nordicframtiden.company.StaffShift shift =
+            mock(com.nordicframtiden.company.StaffShift.class);
+        com.nordicframtiden.security.model.AppUser user =
+            mock(com.nordicframtiden.security.model.AppUser.class);
+        when(user.getId()).thenReturn(42L);
+        when(user.getUsername()).thenReturn("staffer");
+        when(shift.getUser()).thenReturn(user);
+        when(shift.getStartAt()).thenReturn(java.time.OffsetDateTime.parse("2026-08-03T08:00:00Z"));
+        when(shift.getEndAt()).thenReturn(java.time.OffsetDateTime.parse("2026-08-03T18:00:00Z"));
+        when(staffShiftRepo.findInRange(any(), any(), eq(null))).thenReturn(List.of(shift));
+        UserProfile profile = new UserProfile();
+        profile.setFullName("Staff Person");
+        profile.setHourlyCost(new BigDecimal("200"));
+        when(profileRepo.findByUserId(42L)).thenReturn(Optional.of(profile));
+        when(adjustmentService.forMonth(2026, 8)).thenReturn(List.of());
+
+        mvc.perform(get("/api/salaries/month")
+                .param("start", "2026-08-01T00:00:00Z")
+                .param("end", "2026-09-01T00:00:00Z")
+                .param("role", "STAFF"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].users[0].totalCost").value(2000.0))
+            .andExpect(jsonPath("$[0].totalCost").value(2000.0));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
     void salaryEmailUsesStoredEmployeeIdentityInsteadOfCallerSuppliedRecipient() throws Exception {
         UserProfile profile = new UserProfile();
         profile.setEmail("employee@example.com");
