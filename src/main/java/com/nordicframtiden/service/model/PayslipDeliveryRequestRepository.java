@@ -34,7 +34,7 @@ public interface PayslipDeliveryRequestRepository
       update PayslipDeliveryRequest r
       set r.status = 'PENDING', r.email = :email, r.attempts = 0,
           r.claimedAt = null, r.sentAt = null, r.lastError = null
-      where r.id = :id and r.status in ('SENT', 'FAILED')
+      where r.id = :id and r.status in ('SENT', 'FAILED', 'SKIPPED')
       """)
   int requeueForResend(@Param("id") Long id, @Param("email") String email);
 
@@ -74,6 +74,16 @@ public interface PayslipDeliveryRequestRepository
       where r.id = :id and r.status = 'SENDING'
       """)
   int releaseClaimIfSending(@Param("id") Long id);
+
+  /** Terminally records a zero-gross payslip without sending or retrying it. */
+  @Modifying
+  @Transactional
+  @Query("""
+      update PayslipDeliveryRequest r
+      set r.status = 'SKIPPED', r.claimedAt = null, r.lastError = :reason
+      where r.id = :id and r.status = 'SENDING'
+      """)
+  int markSkippedIfSending(@Param("id") Long id, @Param("reason") String reason);
 
   /**
    * Records a failed attempt against a held claim: the error, the new attempt

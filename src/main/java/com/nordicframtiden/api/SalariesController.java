@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/salaries")
 public class SalariesController {
 
+  private static final ZoneId STOCKHOLM = ZoneId.of("Europe/Stockholm");
   private static final String CAN_MANAGE_SALARIES =
       "hasRole('ADMIN') or hasAuthority('PERM_SALARIES')";
 
@@ -252,10 +253,6 @@ public NetSalaryResponse payslipForStaff(
     return Map.of("queued", queued, "sent", false);
   }
 
-  private static double round2(double v) {
-    return Math.round(v * 100.0) / 100.0;
-  }
-
   /* ===================== MONTH SUMMARY ===================== */
 
   @GetMapping("/month")
@@ -278,7 +275,7 @@ public NetSalaryResponse payslipForStaff(
     // platforms. Tax-free adjustments count toward the cost too — they are
     // pay, only the tax treatment differs.
     if (adjustmentService != null) {
-      summaries = withPayslipAdjustments(summaries, lines, start, end);
+      summaries = withPayslipAdjustments(summaries, lines, start, end, role);
     }
     return summaries;
   }
@@ -289,7 +286,7 @@ public NetSalaryResponse payslipForStaff(
    */
   private List<PharmacySummary> withPayslipAdjustments(
       List<PharmacySummary> summaries, List<ShiftLine> lines,
-      OffsetDateTime start, OffsetDateTime end) {
+      OffsetDateTime start, OffsetDateTime end, String role) {
     // Work months covered by the requested window (the end is exclusive —
     // clients request exactly one calendar month; multiple are handled anyway).
     java.util.Set<java.time.YearMonth> months = new java.util.HashSet<>();
@@ -301,8 +298,8 @@ public NetSalaryResponse payslipForStaff(
     if (months.isEmpty()) return summaries;
 
     // userId -> adjustment total for the covered work months. Adjustments
-    // are role-less (shared per user + work month); the peopleInRole check
-    // below keeps them out of the other role's view.
+    // are shared per user + work month; role filtering below keeps them out
+    // of the other role's view.
     Map<Long, BigDecimal> adjustmentTotals = new java.util.HashMap<>();
     for (java.time.YearMonth ym : months) {
       for (var adjustment : adjustmentService.forMonth(ym.getYear(), ym.getMonthValue())) {
@@ -312,17 +309,25 @@ public NetSalaryResponse payslipForStaff(
     }
     if (adjustmentTotals.isEmpty()) return summaries;
 
-    // Restrict to people who actually appear in the requested role's shifts.
+    // Include adjustment-only employees too so salary lists reconcile to all
+    // saved payslip gross amounts, including months with no worked shifts.
     java.util.Set<Long> peopleInRole = lines.stream()
         .map(ShiftLine::userId).collect(java.util.stream.Collectors.toSet());
+    List<PharmacySummary> sourceSummaries = new ArrayList<>(summaries);
+    if (adjustmentTotals.keySet().stream().anyMatch(id -> !peopleInRole.contains(id)
+        && isUserInSalaryRole(id, role))
+        && sourceSummaries.stream().noneMatch(p -> p.pharmacyId() == 0L)) {
+      sourceSummaries.add(new PharmacySummary(0L, "Adjustments", 0, BigDecimal.ZERO, List.of()));
+    }
 
-    List<PharmacySummary> updated = new ArrayList<>(summaries.size());
-    for (PharmacySummary pharmacy : summaries) {
+    Set<Long> adjustmentsApplied = new HashSet<>();
+    List<PharmacySummary> updated = new ArrayList<>(sourceSummaries.size());
+    for (PharmacySummary pharmacy : sourceSummaries) {
       List<UserSummary> users = new ArrayList<>(pharmacy.users().size());
       double totalHours = 0;
       BigDecimal totalCost = BigDecimal.ZERO;
       for (UserSummary user : pharmacy.users()) {
-        BigDecimal extra = peopleInRole.contains(user.userId())
+        BigDecimal extra = adjustmentsApplied.add(user.userId())
             ? adjustmentTotals.getOrDefault(user.userId(), BigDecimal.ZERO)
             : BigDecimal.ZERO;
         double hours = user.hours();
@@ -334,11 +339,37 @@ public NetSalaryResponse payslipForStaff(
         totalHours += hours;
         totalCost = totalCost.add(cost);
       }
+      if (pharmacy.pharmacyId() == 0L) {
+        for (Long userId : adjustmentTotals.keySet()) {
+          if (peopleInRole.contains(userId) || !isUserInSalaryRole(userId, role)) continue;
+          BigDecimal cost = adjustmentTotals.getOrDefault(userId, BigDecimal.ZERO);
+          users.add(new UserSummary(userId, salaryEmployeeName(userId), 0, BigDecimal.ZERO, cost));
+          totalCost = totalCost.add(cost);
+        }
+      }
+
       users.sort((a, b) -> b.totalCost().compareTo(a.totalCost()));
-      updated.add(new PharmacySummary(pharmacy.pharmacyId(), pharmacy.pharmacyName(), totalHours, totalCost, users));
+      updated.add(new PharmacySummary(
+          pharmacy.pharmacyId(), pharmacy.pharmacyName(), totalHours, totalCost, users));
     }
     updated.sort((a, b) -> b.totalCost().compareTo(a.totalCost()));
     return updated;
+  }
+
+  private boolean isUserInSalaryRole(Long userId, String role) {
+    com.nordicframtiden.security.model.Role requiredRole = "STAFF".equalsIgnoreCase(role)
+        ? com.nordicframtiden.security.model.Role.STAFF
+        : com.nordicframtiden.security.model.Role.USER;
+    return userRepo.findById(userId)
+        .map(user -> user.getRoles() != null && user.getRoles().contains(requiredRole))
+        .orElse(false);
+  }
+
+  private String salaryEmployeeName(Long userId) {
+    return profileRepo.findByUserId(userId)
+        .map(profile -> profile.getFullName() == null || profile.getFullName().isBlank()
+            ? "#" + userId : profile.getFullName())
+        .orElse("#" + userId);
   }
 
   /* ===================== REPORT ===================== */
@@ -398,6 +429,16 @@ public NetSalaryResponse payslipForStaff(
     }
 
     var payslip = payslipFreezeService.resolve(userId, year, month, role);
+    if (payslip.grossSalary() == null || payslip.grossSalary().compareTo(BigDecimal.ZERO) == 0) {
+      return ResponseEntity.ok(Map.of(
+          "sent", false,
+          "reason", "ZERO_SALARY",
+          "recipient", email,
+          "employeeName", employeeName,
+          "month", String.format("%04d-%02d", year, month),
+          "payslip", payslip
+      ));
+    }
 
     String monthLabel = String.format("%04d-%02d", year, month);
     boolean sent = emailService.sendSalaryPdfEmail(email, employeeName.isBlank() ? "Employee" : employeeName, pdfBytes, monthLabel);
@@ -540,7 +581,7 @@ public NetSalaryResponse payslipForStaff(
         : (profile != null && profile.getHourlyCost() != null ? profile.getHourlyCost() : BigDecimal.ZERO);
 
     double hours = Duration.between(s.getStartAt(), s.getEndAt()).toMinutes() / 60.0;
-    BigDecimal cost = hourly.multiply(BigDecimal.valueOf(hours));
+    BigDecimal cost = shiftGross(s.getStartAt(), s.getEndAt(), hourly);
 
     String fullName = (profile != null && profile.getFullName() != null && !profile.getFullName().isBlank())
         ? profile.getFullName()
@@ -563,7 +604,7 @@ public NetSalaryResponse payslipForStaff(
         : BigDecimal.ZERO;
 
     double hours = Duration.between(s.getStartAt(), s.getEndAt()).toMinutes() / 60.0;
-    BigDecimal cost = hourly.multiply(BigDecimal.valueOf(hours));
+    BigDecimal cost = shiftGross(s.getStartAt(), s.getEndAt(), hourly);
 
     String fullName = (profile != null && profile.getFullName() != null && !profile.getFullName().isBlank())
         ? profile.getFullName()
@@ -575,6 +616,31 @@ public NetSalaryResponse payslipForStaff(
         s.getStartAt(), s.getEndAt(),
         hours, hourly, cost
     );
+  }
+
+  /** Matches the base + Saturday 50% + Sunday 100% gross calculation in PayrollService. */
+  private BigDecimal shiftGross(OffsetDateTime startAt, OffsetDateTime endAt, BigDecimal hourlyCost) {
+    if (startAt == null || endAt == null || !endAt.isAfter(startAt)) return BigDecimal.ZERO;
+
+    Instant cursor = startAt.toInstant();
+    Instant end = endAt.toInstant();
+    BigDecimal gross = BigDecimal.ZERO;
+    while (cursor.isBefore(end)) {
+      ZonedDateTime local = cursor.atZone(STOCKHOLM);
+      Instant nextMidnight = local.toLocalDate().plusDays(1).atStartOfDay(STOCKHOLM).toInstant();
+      Instant segmentEnd = end.isBefore(nextMidnight) ? end : nextMidnight;
+      BigDecimal segmentHours = BigDecimal.valueOf(Duration.between(cursor, segmentEnd).toMillis())
+          .divide(BigDecimal.valueOf(3_600_000), 6, RoundingMode.HALF_UP);
+      BigDecimal segmentPay = hourlyCost.multiply(segmentHours);
+      gross = gross.add(segmentPay);
+      if (local.getDayOfWeek() == DayOfWeek.SATURDAY) {
+        gross = gross.add(segmentPay.multiply(new BigDecimal("0.5")));
+      } else if (local.getDayOfWeek() == DayOfWeek.SUNDAY) {
+        gross = gross.add(segmentPay);
+      }
+      cursor = segmentEnd;
+    }
+    return gross;
   }
 
   private List<PharmacySummary> summarizeByPharmacy(List<ShiftLine> lines) {

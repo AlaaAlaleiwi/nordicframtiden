@@ -94,9 +94,13 @@ class PayslipDeliveryServiceTest {
     }
 
     private NetSalaryResponse payslip() {
-        return new NetSalaryResponse(7L, "2026-08",
+        return payslip(7L, new BigDecimal("24000"));
+    }
+
+    private NetSalaryResponse payslip(long userId, BigDecimal grossSalary) {
+        return new NetSalaryResponse(userId, "2026-08",
             new BigDecimal("200"), new BigDecimal("120"),
-            new BigDecimal("24000"), null, null, null, null,
+            grossSalary, null, null, null, null,
             new BigDecimal("4800"), new BigDecimal("19200"));
     }
 
@@ -157,6 +161,21 @@ class PayslipDeliveryServiceTest {
             eq(PayslipDeliveryRequest.STATUS_PENDING), eq(1));
         // No push went out and no SENT was recorded.
         verify(pushSender, never()).send(anyString(), any());
+        verify(requests, never()).markSentIfSending(anyLong(), any());
+    }
+
+    @Test
+    void deliver_skipsZeroGrossPayslipsWithoutSendingOrRetrying() {
+        when(payslips.resolve(7L, 2026, 8, "USER")).thenReturn(payslip(7L, BigDecimal.ZERO));
+
+        boolean sent = service.deliver(row);
+
+        assertThat(sent).isFalse();
+        verify(requests).markSkippedIfSending(100L, "Zero-gross payslip; no email sent");
+        verify(pdfBuilder, never()).build(any(), anyInt(), anyInt(), any(), any(), any(), any(), any());
+        verify(emailService, never()).sendSalaryPdfEmail(anyString(), anyString(), any(byte[].class), anyString());
+        verify(pushSender, never()).send(anyString(), any());
+        verify(requests, never()).recordFailureIfSending(anyLong(), anyString(), anyString(), anyInt());
         verify(requests, never()).markSentIfSending(anyLong(), any());
     }
 

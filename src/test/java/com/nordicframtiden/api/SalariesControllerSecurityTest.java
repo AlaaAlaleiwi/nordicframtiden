@@ -5,6 +5,7 @@ import com.nordicframtiden.pharmacy.ScheduleShiftRepository;
 import com.nordicframtiden.security.jwt.JwtService;
 import com.nordicframtiden.security.model.AppUser;
 import com.nordicframtiden.security.model.UserProfile;
+import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;
@@ -27,6 +28,7 @@ import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -296,6 +298,74 @@ class SalariesControllerSecurityTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
+    void monthlyTotalsIncludeSundayPremiumLikeThePayslipGross() throws Exception {
+        com.nordicframtiden.pharmacy.ScheduleShift shift =
+            mock(com.nordicframtiden.pharmacy.ScheduleShift.class);
+        com.nordicframtiden.pharmacy.Pharmacy pharmacy =
+            mock(com.nordicframtiden.pharmacy.Pharmacy.class);
+        com.nordicframtiden.security.model.AppUser user =
+            mock(com.nordicframtiden.security.model.AppUser.class);
+        when(pharmacy.getId()).thenReturn(11L);
+        when(pharmacy.getName()).thenReturn("Central pharmacy");
+        when(user.getId()).thenReturn(42L);
+        when(user.getUsername()).thenReturn("pharmacist");
+        when(shift.getPharmacy()).thenReturn(pharmacy);
+        when(shift.getUser()).thenReturn(user);
+        // Sunday shift: payroll gross includes a 100% Sunday OB premium.
+        when(shift.getStartAt()).thenReturn(java.time.OffsetDateTime.parse("2026-08-02T08:00:00Z"));
+        when(shift.getEndAt()).thenReturn(java.time.OffsetDateTime.parse("2026-08-02T18:00:00Z"));
+        when(shiftRepo.findInRange(any(), any(), eq(null), eq(null))).thenReturn(List.of(shift));
+        UserProfile profile = new UserProfile();
+        profile.setFullName("Pharmacist Person");
+        profile.setHourlyCost(new BigDecimal("200"));
+        when(profileRepo.findByUserId(42L)).thenReturn(Optional.of(profile));
+        when(adjustmentService.forMonth(2026, 8)).thenReturn(List.of());
+
+        mvc.perform(get("/api/salaries/month")
+                .param("start", "2026-08-01T00:00:00Z")
+                .param("end", "2026-09-01T00:00:00Z")
+                .param("role", "USER"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].users[0].totalCost").value(4000.00))
+            .andExpect(jsonPath("$[0].totalCost").value(4000.00));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void monthlyTotalsIncludeAdjustmentOnlyEmployees() throws Exception {
+        com.nordicframtiden.security.model.AppUser user =
+            mock(com.nordicframtiden.security.model.AppUser.class);
+        when(user.getId()).thenReturn(43L);
+        when(user.getRoles()).thenReturn(Set.of(Role.USER));
+        when(userRepo.findById(43L)).thenReturn(Optional.of(user));
+        when(shiftRepo.findInRange(any(), any(), eq(null), eq(null))).thenReturn(List.of());
+
+        UserProfile profile = new UserProfile();
+        profile.setFullName("Adjustment Only Employee");
+        when(profileRepo.findByUserId(43L)).thenReturn(Optional.of(profile));
+        com.nordicframtiden.service.model.SalaryAdjustment bonus =
+            new com.nordicframtiden.service.model.SalaryAdjustment();
+        bonus.setUserId(43L);
+        bonus.setYear(2026);
+        bonus.setMonth(8);
+        bonus.setName("Bonus");
+        bonus.setAmount(new BigDecimal("750"));
+        bonus.setTaxTreatment(com.nordicframtiden.service.model.SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE);
+        when(adjustmentService.forMonth(2026, 8)).thenReturn(List.of(bonus));
+
+        mvc.perform(get("/api/salaries/month")
+                .param("start", "2026-08-01T00:00:00Z")
+                .param("end", "2026-09-01T00:00:00Z")
+                .param("role", "USER"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].pharmacyId").value(0))
+            .andExpect(jsonPath("$[0].users[0].userId").value(43))
+            .andExpect(jsonPath("$[0].users[0].totalCost").value(750.00))
+            .andExpect(jsonPath("$[0].totalCost").value(750.00));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
     void monthlyTotalsStayUnchangedWithoutAdjustments() throws Exception {
         com.nordicframtiden.company.StaffShift shift =
             mock(com.nordicframtiden.company.StaffShift.class);
@@ -329,7 +399,7 @@ class SalariesControllerSecurityTest {
         profile.setEmail("employee@example.com");
         profile.setFullName("Stored Employee");
         when(profileRepo.findByUserId(42L)).thenReturn(Optional.of(profile));
-        when(payslipFreezeService.resolve(42L, 2026, 8, "USER")).thenReturn(payslip(42L));
+        when(payslipFreezeService.resolve(42L, 2026, 8, "USER")).thenReturn(payslip(42L, new BigDecimal("2500")));
         when(emailService.sendSalaryPdfEmail(eq("employee@example.com"), eq("Stored Employee"), any(), eq("2026-08")))
             .thenReturn(true);
 
@@ -354,9 +424,41 @@ class SalariesControllerSecurityTest {
             eq("employee@example.com"), eq("Stored Employee"), any(), eq("2026-08"));
     }
 
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void salaryEmailSkipsZeroGrossPayslips() throws Exception {
+        UserProfile profile = new UserProfile();
+        profile.setEmail("employee@example.com");
+        profile.setFullName("Stored Employee");
+        when(profileRepo.findByUserId(42L)).thenReturn(Optional.of(profile));
+        NetSalaryResponse zeroPayslip = payslip(42L, BigDecimal.ZERO);
+        when(payslipFreezeService.resolve(42L, 2026, 8, "USER")).thenReturn(zeroPayslip);
+
+        mvc.perform(post("/api/salaries/send-pdf-email").with(csrf())
+                .contentType("application/json")
+                .content("""
+                    {
+                      "userId": 42,
+                      "year": 2026,
+                      "month": 8,
+                      "role": "USER",
+                      "pdfBase64": "cGRm"
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sent").value(false))
+            .andExpect(jsonPath("$.reason").value("ZERO_SALARY"));
+
+        verify(emailService, never()).sendSalaryPdfEmail(any(), any(), any(), any());
+    }
+
     private static NetSalaryResponse payslip(long userId) {
+        return payslip(userId, BigDecimal.ZERO);
+    }
+
+    private static NetSalaryResponse payslip(long userId, BigDecimal grossSalary) {
         return new NetSalaryResponse(
-            userId, "2026-08", BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            userId, "2026-08", BigDecimal.ZERO, BigDecimal.ZERO, grossSalary,
             2026, "0180", 30, 1, BigDecimal.ZERO, BigDecimal.ZERO);
     }
 }

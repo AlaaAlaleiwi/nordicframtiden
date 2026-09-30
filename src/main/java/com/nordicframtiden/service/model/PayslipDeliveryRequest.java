@@ -25,6 +25,7 @@ public class PayslipDeliveryRequest {
   public static final String STATUS_SENDING = "SENDING";
   public static final String STATUS_SENT = "SENT";
   public static final String STATUS_FAILED = "FAILED";
+  public static final String STATUS_SKIPPED = "SKIPPED";
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)

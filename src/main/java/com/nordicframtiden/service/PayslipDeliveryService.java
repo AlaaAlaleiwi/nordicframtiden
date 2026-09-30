@@ -222,6 +222,11 @@ public class PayslipDeliveryService {
             // the period is closed) from the immutable snapshot pipeline.
             NetSalaryResponse payslip = payslips.resolve(
                 userId, request.getWorkYear(), request.getWorkMonth(), request.getRole());
+            if (payslip.grossSalary() == null || payslip.grossSalary().compareTo(java.math.BigDecimal.ZERO) == 0) {
+                requests.markSkippedIfSending(request.getId(), "Zero-gross payslip; no email sent");
+                log.info("Payslip delivery for user {}: zero-gross payslip skipped", userId);
+                return false;
+            }
             byte[] pdf = pdfBuilder.build(
                 name,
                 request.getWorkYear(), request.getWorkMonth(),
@@ -324,7 +329,8 @@ public class PayslipDeliveryService {
         PayslipDeliveryRequest request = requests.findById(requestId)
             .orElseThrow(() -> new IllegalArgumentException("Delivery request not found"));
         if (PayslipDeliveryRequest.STATUS_PENDING.equals(request.getStatus())
-            || PayslipDeliveryRequest.STATUS_SENDING.equals(request.getStatus())) {
+            || PayslipDeliveryRequest.STATUS_SENDING.equals(request.getStatus())
+            || PayslipDeliveryRequest.STATUS_SKIPPED.equals(request.getStatus())) {
             // Already queued or in flight — resending would risk a duplicate.
             return 0;
         }
