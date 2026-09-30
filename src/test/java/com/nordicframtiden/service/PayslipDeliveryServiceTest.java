@@ -317,28 +317,51 @@ class PayslipDeliveryServiceTest {
     /* ===================== Admin audit + resend ===================== */
 
     @Test
-    void resend_requeuesAFailedRow_forImmediateDelivery() {
-        PayslipDeliveryRequest failed = new PayslipDeliveryRequest(7L, "anna@example.com", 2026, 8, "USER");
+    void deliverOne_sendsOnlyTheRequestedRow_withoutDrainingTheQueue() {
+        stubHappyPath();
+        when(requests.findById(100L)).thenReturn(Optional.of(row));
+
+        boolean sent = service.deliverOne(100L);
+
+        assertThat(sent).isTrue();
+        verify(requests, never()).findByStatusOrderByCreatedAtAsc(anyString());
+        verify(requests, never()).releaseStaleClaims(any());
+        verify(emailService).sendSalaryPdfEmail(eq("anna@example.com"), eq("Anna Andersson"),
+            any(byte[].class), eq("2026-08"));
+    }
+
+    @Test
+    void resend_requeuesAFailedRow_andDeliversOnlyThatRow() {
+        PayslipDeliveryRequest failed = new PayslipDeliveryRequest(7L, "old@example.com", 2026, 8, "USER");
         failed.setId(101L);
         failed.setStatus(PayslipDeliveryRequest.STATUS_FAILED);
         failed.setAttempts(PayslipDeliveryService.MAX_ATTEMPTS);
         failed.setLastError("smtp down");
         when(requests.findById(101L)).thenReturn(Optional.of(failed));
-        when(requests.findByStatusOrderByCreatedAtAsc(PayslipDeliveryRequest.STATUS_PENDING))
-            .thenReturn(List.of(failed));
+        when(requests.requeueForResend(101L, "anna@example.com")).thenAnswer(invocation -> {
+            failed.setEmail(invocation.getArgument(1));
+            failed.setStatus(PayslipDeliveryRequest.STATUS_PENDING);
+            failed.setAttempts(0);
+            failed.setClaimedAt(null);
+            failed.setSentAt(null);
+            failed.setLastError(null);
+            return 1;
+        });
         when(requests.claimIfPending(eq(101L), any())).thenReturn(1);
         when(requests.markSentIfSending(eq(101L), any())).thenReturn(1);
         stubHappyPath();
 
-        int queued = service.resend(101L);
-        int delivered = service.deliverPending();
+        PayslipDeliveryService.ResendResult result = service.resendAndDeliver(101L);
 
-        assertThat(queued).isEqualTo(1);
-        assertThat(delivered).isEqualTo(1);
+        assertThat(result.queued()).isTrue();
+        assertThat(result.sent()).isTrue();
         assertThat(failed.getStatus()).isEqualTo(PayslipDeliveryRequest.STATUS_PENDING);
-        verify(requests).save(argThat(saved ->
-            saved.getStatus().equals(PayslipDeliveryRequest.STATUS_PENDING)
-                && saved.getLastError() == null));
+        assertThat(failed.getAttempts()).isZero();
+        assertThat(failed.getClaimedAt()).isNull();
+        assertThat(failed.getSentAt()).isNull();
+        verify(requests, never()).findByStatusOrderByCreatedAtAsc(anyString());
+        verify(requests, never()).releaseStaleClaims(any());
+        verify(requests).requeueForResend(101L, "anna@example.com");
     }
 
     @Test
@@ -349,11 +372,11 @@ class PayslipDeliveryServiceTest {
         when(requests.findById(102L)).thenReturn(Optional.of(pending));
 
         assertThat(service.resend(102L)).isZero();
-        verify(requests, never()).save(any());
+        verify(requests, never()).requeueForResend(anyLong(), anyString());
 
         pending.setStatus(PayslipDeliveryRequest.STATUS_SENDING);
         assertThat(service.resend(102L)).isZero();
-        verify(requests, never()).save(any());
+        verify(requests, never()).requeueForResend(anyLong(), anyString());
     }
 
     @Test

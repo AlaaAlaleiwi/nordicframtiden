@@ -27,6 +27,17 @@ public interface PayslipDeliveryRequestRepository
   /** Audit listing for one work month, oldest first. */
   List<PayslipDeliveryRequest> findByWorkYearAndWorkMonthOrderByCreatedAtAsc(int workYear, int workMonth);
 
+  /** Atomically re-queues a terminal row without racing a worker or another resend. */
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Transactional
+  @Query("""
+      update PayslipDeliveryRequest r
+      set r.status = 'PENDING', r.email = :email, r.attempts = 0,
+          r.claimedAt = null, r.sentAt = null, r.lastError = null
+      where r.id = :id and r.status in ('SENT', 'FAILED')
+      """)
+  int requeueForResend(@Param("id") Long id, @Param("email") String email);
+
   /**
    * Exactly-once claim: flips a single PENDING row to SENDING and reports
    * whether this worker won it. Rows claimed by another worker return 0, so

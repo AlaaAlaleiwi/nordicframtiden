@@ -199,7 +199,7 @@ public NetSalaryResponse payslipForStaff(
   @GetMapping("/payslip/ready-status")
   @PreAuthorize("isAuthenticated()")
   public Map<String, Object> payslipReadyStatus(Authentication auth) {
-    java.time.LocalDate today = java.time.LocalDate.now();
+    java.time.LocalDate today = java.time.LocalDate.now(ZoneId.of("Europe/Stockholm"));
     java.time.YearMonth payoutMonth = java.time.YearMonth.from(today);
     java.time.YearMonth workMonth = payoutMonth.minusMonths(1);
     java.time.LocalDate readyDate = payslipDeliveryService.readyDateFor(payoutMonth);
@@ -207,12 +207,15 @@ public NetSalaryResponse payslipForStaff(
     boolean ready = !today.isBefore(readyDate);
     var delivered = payslipDeliveryService.lastDelivered(currentUserId(auth), "USER");
 
-    return Map.of(
-        "ready", ready,
-        "readyDate", readyDate.toString(),
-        "workMonth", workMonth.toString(),
-        "lastDeliveredMonth", delivered.map(java.time.YearMonth::toString).orElse(null)
-    );
+    // Map.of rejects null values. Before the first successful delivery there
+    // is no lastDeliveredMonth, so use a mutable map to return JSON null rather
+    // than turning this informational endpoint into a 500 response.
+    Map<String, Object> status = new LinkedHashMap<>();
+    status.put("ready", ready);
+    status.put("readyDate", readyDate.toString());
+    status.put("workMonth", workMonth.toString());
+    status.put("lastDeliveredMonth", delivered.map(java.time.YearMonth::toString).orElse(null));
+    return status;
   }
 
   /* ===================== Admin audit + resend ===================== */
@@ -229,13 +232,12 @@ public NetSalaryResponse payslipForStaff(
   @PostMapping("/payslip/deliveries/{id}/resend")
   @PreAuthorize(CAN_MANAGE_SALARIES)
   public Map<String, Object> resendPayslipDelivery(@PathVariable Long id) {
-    int queued = payslipDeliveryService.resend(id);
-    if (queued == 0) {
-      return Map.of("queued", false, "reason",
+    PayslipDeliveryService.ResendResult result = payslipDeliveryService.resendAndDeliver(id);
+    if (!result.queued()) {
+      return Map.of("queued", false, "sent", false, "reason",
           "Already queued or currently being delivered");
     }
-    boolean sent = payslipDeliveryService.deliverPending() > 0;
-    return Map.of("queued", true, "sent", sent);
+    return Map.of("queued", true, "sent", result.sent());
   }
 
   /** Queues rows for every eligible account missing one for the month. */
@@ -243,10 +245,11 @@ public NetSalaryResponse payslipForStaff(
   @PreAuthorize(CAN_MANAGE_SALARIES)
   public Map<String, Object> queueMissingPayslipDeliveries(
       @RequestParam int year, @RequestParam int month) {
-    YearMonth.of(year, month); // validates the month range
-    int queued = payslipDeliveryService.queueMissing(java.time.YearMonth.of(year, month));
-    boolean sent = payslipDeliveryService.deliverPending() > 0;
-    return Map.of("queued", queued, "sent", sent);
+    YearMonth workMonth = YearMonth.of(year, month); // validates the month range
+    int queued = payslipDeliveryService.queueMissing(workMonth);
+    // Queueing missing rows does not synchronously drain delivery work. The
+    // scheduled worker sends them later without touching unrelated months.
+    return Map.of("queued", queued, "sent", false);
   }
 
   private static double round2(double v) {

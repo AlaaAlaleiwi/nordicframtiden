@@ -9,6 +9,7 @@ import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;
 import com.nordicframtiden.service.PayslipFreezeService;
+import com.nordicframtiden.service.PayslipDeliveryService;
 import com.nordicframtiden.service.SalaryAdjustmentService;
 import com.nordicframtiden.service.model.NetSalaryResponse;
 import com.nordicframtiden.settings.EmailService;
@@ -23,12 +24,14 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -58,7 +61,7 @@ class SalariesControllerSecurityTest {
     @MockitoBean PayslipFreezeService payslipFreezeService;
     @MockitoBean SalaryAdjustmentService adjustmentService;
     @MockitoBean EmailService emailService;
-    @MockitoBean com.nordicframtiden.service.PayslipDeliveryService payslipDeliveryService;
+    @MockitoBean PayslipDeliveryService payslipDeliveryService;
     @MockitoBean JwtService jwtService;
 
     @Test
@@ -133,6 +136,66 @@ class SalariesControllerSecurityTest {
                     }
                     """))
             .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "alice", roles = "USER")
+    void payslipReadyStatusReturnsNullMonthBeforeTheFirstDelivery() throws Exception {
+        AppUser alice = mock(AppUser.class);
+        when(alice.getId()).thenReturn(7L);
+        when(userRepo.findByUsername("alice")).thenReturn(Optional.of(alice));
+        when(payslipDeliveryService.readyDateFor(any())).thenReturn(java.time.LocalDate.of(2026, 9, 21));
+        when(payslipDeliveryService.lastDelivered(7L, "USER")).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/salaries/payslip/ready-status"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.ready").isBoolean())
+            .andExpect(jsonPath("$.lastDeliveredMonth").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void resendDeliversOnlyTheRequestedRow() throws Exception {
+        when(payslipDeliveryService.resendAndDeliver(101L))
+            .thenReturn(new PayslipDeliveryService.ResendResult(true, true));
+
+        mvc.perform(post("/api/salaries/payslip/deliveries/101/resend").with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.queued").value(true))
+            .andExpect(jsonPath("$.sent").value(true));
+
+        verify(payslipDeliveryService).resendAndDeliver(101L);
+        verify(payslipDeliveryService, never()).deliverPending();
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void resendReportsWhenTheRowCouldNotBeRequeued() throws Exception {
+        when(payslipDeliveryService.resendAndDeliver(101L))
+            .thenReturn(new PayslipDeliveryService.ResendResult(false, false));
+
+        mvc.perform(post("/api/salaries/payslip/deliveries/101/resend").with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.queued").value(false))
+            .andExpect(jsonPath("$.sent").value(false));
+
+        verify(payslipDeliveryService).resendAndDeliver(101L);
+        verify(payslipDeliveryService, never()).deliverPending();
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void queueMissingOnlyQueuesTheRequestedMonth() throws Exception {
+        when(payslipDeliveryService.queueMissing(YearMonth.of(2026, 8))).thenReturn(2);
+
+        mvc.perform(post("/api/salaries/payslip/deliveries/queue-missing").with(csrf())
+                .param("year", "2026").param("month", "8"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.queued").value(2))
+            .andExpect(jsonPath("$.sent").value(false));
+
+        verify(payslipDeliveryService).queueMissing(YearMonth.of(2026, 8));
+        verify(payslipDeliveryService, never()).deliverPending();
     }
 
     @Test

@@ -188,6 +188,23 @@ public class PayslipDeliveryService {
         return delivered;
     }
 
+    /**
+     * Delivers only the requested row. Used by the admin resend action so its
+     * result cannot be accidentally attributed to an unrelated pending row.
+     */
+    public boolean deliverOne(Long requestId) {
+        return requests.findById(requestId).map(this::deliver).orElse(false);
+    }
+
+    /** Re-queues and delivers only the selected row, never unrelated pending work. */
+    public ResendResult resendAndDeliver(Long requestId) {
+        int queued = resend(requestId);
+        if (queued == 0) return new ResendResult(false, false);
+        return new ResendResult(true, deliverOne(requestId));
+    }
+
+    public record ResendResult(boolean queued, boolean sent) { }
+
     /** Delivers one row. Returns true when it was sent and marked SENT. */
     boolean deliver(PayslipDeliveryRequest request) {
         Instant now = Instant.now(clock);
@@ -300,10 +317,9 @@ public class PayslipDeliveryService {
     /**
      * Admin resend: re-queues one finished/failed row for immediate delivery
      * (the nightly queue is untouched; a PENDING/SENDING row is refused as it
-     * is already being handled, and a missing row is queued instead). Returns
-     * the number of rows actually queued (0 or 1).
+     * is already being handled, and a missing row is reported as an error).
+     * Returns the number of rows actually queued (0 or 1).
      */
-    @Transactional
     public int resend(Long requestId) {
         PayslipDeliveryRequest request = requests.findById(requestId)
             .orElseThrow(() -> new IllegalArgumentException("Delivery request not found"));
@@ -312,10 +328,11 @@ public class PayslipDeliveryService {
             // Already queued or in flight — resending would risk a duplicate.
             return 0;
         }
-        request.setStatus(PayslipDeliveryRequest.STATUS_PENDING);
-        request.setLastError(null);
-        requests.save(request);
-        return 1;
+        String email = emailOf(request.getUserId());
+        if (email == null) email = request.getEmail();
+        // Conditional database update prevents duplicate concurrent resends
+        // and avoids overwriting a claim placed by the scheduled worker.
+        return requests.requeueForResend(requestId, email);
     }
 
     /**
