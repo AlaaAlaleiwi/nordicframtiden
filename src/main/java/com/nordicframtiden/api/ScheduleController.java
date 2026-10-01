@@ -2,6 +2,8 @@ package com.nordicframtiden.api;
 
 import com.nordicframtiden.pharmacy.ScheduleService;
 import com.nordicframtiden.pharmacy.ScheduleShift;
+import com.nordicframtiden.pharmacy.ScheduleShiftRepository;
+import com.nordicframtiden.notification.PushNotificationService;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 
 import org.springframework.http.HttpStatus;
@@ -19,10 +21,15 @@ public class ScheduleController {
 
   private final ScheduleService service;
   private final UserProfileRepository userProfileRepository;
+  private final ScheduleShiftRepository shiftRepository;
+  private final PushNotificationService notifications;
 
-  public ScheduleController(ScheduleService service, UserProfileRepository userProfileRepository) {
+  public ScheduleController(ScheduleService service, UserProfileRepository userProfileRepository,
+      ScheduleShiftRepository shiftRepository, PushNotificationService notifications) {
     this.service = service;
     this.userProfileRepository = userProfileRepository;
+    this.shiftRepository = shiftRepository;
+    this.notifications = notifications;
   }
 
   public record EventDto(
@@ -123,6 +130,10 @@ public class ScheduleController {
         req.endAt(),
         req.note());
 
+    notifications.notifyUser(created.getUser().getId(), "schedule.added",
+        "New schedule", "A new shift was added to your schedule.",
+        java.util.Map.of("scheduleId", created.getId()));
+
     Long pid = created.getPharmacy() == null ? null : created.getPharmacy().getId();
     String pname = created.getPharmacy() == null ? null : created.getPharmacy().getName();
     var u = userProfileRepository.findByUserId(created.getUser().getId());
@@ -142,6 +153,9 @@ public class ScheduleController {
   public EventDto update(@PathVariable Long id,
       @RequestBody CreateRequest req) {
 
+    Long previousUserId = shiftRepository.findById(id)
+        .map(shift -> shift.getUser().getId()).orElse(null);
+
     var updated = service.update(
         id,
         req.pharmacyId(),
@@ -149,6 +163,16 @@ public class ScheduleController {
         req.startAt(),
         req.endAt(),
         req.note());
+
+    Long updatedUserId = updated.getUser().getId();
+    notifications.notifyUser(updatedUserId, "schedule.updated",
+        "Schedule updated", "Your schedule has been changed.",
+        java.util.Map.of("scheduleId", updated.getId()));
+    if (previousUserId != null && !previousUserId.equals(updatedUserId)) {
+      notifications.notifyUser(previousUserId, "schedule.deleted",
+          "Schedule updated", "A shift was removed from your schedule.",
+          java.util.Map.of("scheduleId", updated.getId()));
+    }
 
     Long pid = updated.getPharmacy() == null ? null : updated.getPharmacy().getId();
     String pname = updated.getPharmacy() == null ? null : updated.getPharmacy().getName();
@@ -168,6 +192,13 @@ public class ScheduleController {
   @DeleteMapping("/{id}")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void delete(@PathVariable Long id) {
+    Long userId = shiftRepository.findById(id)
+        .map(shift -> shift.getUser().getId()).orElse(null);
     service.delete(id);
+    if (userId != null) {
+      notifications.notifyUser(userId, "schedule.deleted",
+          "Schedule updated", "A shift was removed from your schedule.",
+          java.util.Map.of("scheduleId", id));
+    }
   }
 }

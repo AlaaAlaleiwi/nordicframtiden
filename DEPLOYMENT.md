@@ -140,3 +140,21 @@ Push payloads are intentionally generic. Firebase receives the installation targ
 the text “You have a new message”, but not the sender, message body, room ID, or chat URL.
 Users opt in with the bell button in Messages, and each browser installation is stored in
 `chat_push_subscription` by Flyway migration `V22`.
+
+## iOS APNs notifications
+
+Schedule and profile-change notifications use Apple Push Notification service directly.
+Create an APNs signing key in the Apple Developer portal, store the `.p8` contents in
+Secret Manager, and configure the backend with:
+
+```text
+APP_APNS_ENABLED=true
+APP_APNS_TEAM_ID=<apple-developer-team-id>
+APP_APNS_KEY_ID=<apns-key-id>
+APP_APNS_PRIVATE_KEY=<contents-of-the-p8-file>
+APP_APNS_BUNDLE_ID=com.nordicFramtiden
+```
+
+Pass `APP_APNS_PRIVATE_KEY` as a Cloud Run secret. The value may contain real newlines or
+escaped `\n` line breaks. Device tokens are associated with the authenticated account by
+Flyway migration `V48`; the server automatically removes tokens APNs reports as invalid.

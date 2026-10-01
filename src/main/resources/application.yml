@@ -19,6 +19,12 @@ app:
     messaging-sender-id: ${APP_FIREBASE_MESSAGING_SENDER_ID:}
     app-id: ${APP_FIREBASE_APP_ID:}
     vapid-public-key: ${APP_FIREBASE_VAPID_PUBLIC_KEY:}
+  apns:
+    enabled: ${APP_APNS_ENABLED:false}
+    team-id: ${APP_APNS_TEAM_ID:}
+    key-id: ${APP_APNS_KEY_ID:}
+    private-key: ${APP_APNS_PRIVATE_KEY:}
+    bundle-id: ${APP_APNS_BUNDLE_ID:}
   skatteverket:
     tax-table-import:
       enabled: ${SKATTEVERKET_TAX_TABLE_IMPORT_ENABLED:true}

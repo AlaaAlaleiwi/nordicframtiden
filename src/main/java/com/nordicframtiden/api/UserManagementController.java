@@ -4,6 +4,7 @@ import com.nordicframtiden.security.model.Permission;
 import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.service.PasswordResetService;
 import com.nordicframtiden.security.service.UserService;
+import com.nordicframtiden.notification.PushNotificationService;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -24,10 +25,13 @@ public class UserManagementController {
 
   private final UserService userService;
   private final PasswordResetService passwordResetService;
+  private final PushNotificationService notifications;
 
-  public UserManagementController(UserService userService, PasswordResetService passwordResetService) {
+  public UserManagementController(UserService userService, PasswordResetService passwordResetService,
+      PushNotificationService notifications) {
     this.userService = userService;
     this.passwordResetService = passwordResetService;
+    this.notifications = notifications;
   }
 
   // ---------- DTOs ----------
@@ -229,6 +233,9 @@ public class UserManagementController {
         req.municipalityCode(),
         req.permissions() // ✅ new
     );
+
+    notifications.notifyUser(id, "profile.updated", "Profile updated",
+        "Your account information has been changed.", Map.of("userId", id));
 
     return toResponse(updated, null);
   }
