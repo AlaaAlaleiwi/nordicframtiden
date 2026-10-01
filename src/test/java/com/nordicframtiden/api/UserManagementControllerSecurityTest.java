@@ -4,6 +4,7 @@ import com.nordicframtiden.security.model.Role;
 import com.nordicframtiden.security.jwt.JwtService;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.service.UserService;
+import com.nordicframtiden.notification.PushNotificationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -48,6 +49,9 @@ class UserManagementControllerSecurityTest {
 
     @MockitoBean
     com.nordicframtiden.security.service.PasswordResetService passwordResetService;
+
+    @MockitoBean
+    PushNotificationService pushNotificationService;
 
     @Test
     @WithMockUser(roles = "USER")
