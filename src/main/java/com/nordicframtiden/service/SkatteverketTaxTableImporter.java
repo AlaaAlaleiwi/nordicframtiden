@@ -26,6 +26,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import com.nordicframtiden.service.model.TaxTableRow;
+
 /** Downloads and imports Skatteverket's public monthly payroll tax tables. */
 @Component
 @ConditionalOnProperty(
@@ -38,8 +40,10 @@ public class SkatteverketTaxTableImporter {
   private static final ZoneId STOCKHOLM = ZoneId.of("Europe/Stockholm");
   private static final Pattern DOWNLOAD_LINK = Pattern.compile(
       "href=\"([^\"]*allmanna-tabeller-manad\\.txt[^\"]*)\"", Pattern.CASE_INSENSITIVE);
-  private static final int EXPECTED_TABLE_COUNT = 14;
+  static final int EXPECTED_TABLE_COUNT = 14;
   private static final int MINIMUM_ROW_COUNT = 7_000;
+  private static final int COLUMN_FIELD_START = 19;
+  private static final int COLUMN_FIELD_WIDTH = 5;
 
   private final TaxTableImportStore store;
   private final HttpClient httpClient;
@@ -159,14 +163,21 @@ public class SkatteverketTaxTableImporter {
         int incomeFrom = Integer.parseInt(rawLine.substring(5, 12).trim());
         String incomeToText = rawLine.substring(12, 19).trim();
         int incomeTo = incomeToText.isEmpty() ? Integer.MAX_VALUE : Integer.parseInt(incomeToText);
-        String[] columns = rawLine.substring(19).trim().split("\\s+");
-        if (columns.length != 6) {
-          throw new IllegalArgumentException("expected six tax columns");
+        // The six tax columns are five-character right-aligned fields. Values of
+        // 10 000 kr and above fill their field completely, so the columns cannot
+        // be recovered by splitting on whitespace; they must be read positionally.
+        String line = padToColumnArea(rawLine);
+        int[] columns = new int[6];
+        for (int column = 0; column < columns.length; column++) {
+          int fieldStart = COLUMN_FIELD_START + COLUMN_FIELD_WIDTH * column;
+          String field = line.substring(fieldStart, fieldStart + COLUMN_FIELD_WIDTH).trim();
+          if (field.isEmpty()) {
+            throw new IllegalArgumentException("tax column " + (column + 1) + " is empty");
+          }
+          columns[column] = Integer.parseInt(field);
         }
         rows.add(new TaxTableImportRow(year, tableNumber, incomeFrom, incomeTo,
-            Integer.parseInt(columns[0]), Integer.parseInt(columns[1]),
-            Integer.parseInt(columns[2]), Integer.parseInt(columns[3]),
-            Integer.parseInt(columns[4]), Integer.parseInt(columns[5]), percentage));
+            columns[0], columns[1], columns[2], columns[3], columns[4], columns[5], percentage));
       } catch (RuntimeException exception) {
         throw new IllegalArgumentException("Invalid Skatteverket tax-table line: " + rawLine, exception);
       }
@@ -212,9 +223,34 @@ public class SkatteverketTaxTableImporter {
     }
   }
 
-  private static void validate(List<TaxTableImportRow> rows) {
+  private static String padToColumnArea(String rawLine) {
+    int requiredLength = COLUMN_FIELD_START + COLUMN_FIELD_WIDTH * 6;
+    return rawLine.length() >= requiredLength ? rawLine : String.format("%-" + requiredLength + "s", rawLine);
+  }
+
+  static void validate(List<TaxTableImportRow> rows) {
+    // Monthly tables are expressed in kronor up to 80 000 kr; above that every
+    // row is a percentage row. A file that violates this is misparsed and must
+    // never replace the stored tables, or raw percentages would be paid out as
+    // kronor.
+    for (TaxTableImportRow row : rows) {
+      if (!row.percentage() && row.incomeFrom() > TaxTableRow.MONTHLY_KRONOR_INCOME_LIMIT) {
+        throw new IllegalArgumentException(
+            "Kronor row above " + TaxTableRow.MONTHLY_KRONOR_INCOME_LIMIT + " kr: " + row);
+      }
+    }
+    // Each table must end in exactly one open-ended percentage row.
     Set<Integer> tableNumbers = new HashSet<>();
     rows.forEach(row -> tableNumbers.add(row.tableNumber()));
+    for (int tableNumber : tableNumbers) {
+      List<TaxTableImportRow> openEnded = rows.stream()
+          .filter(row -> row.tableNumber() == tableNumber && row.incomeTo() == Integer.MAX_VALUE)
+          .toList();
+      if (openEnded.size() != 1 || !openEnded.get(0).percentage()) {
+        throw new IllegalArgumentException("Table " + tableNumber
+            + " must have exactly one open-ended percentage row, found " + openEnded.size());
+      }
+    }
     if (rows.size() < MINIMUM_ROW_COUNT || tableNumbers.size() != EXPECTED_TABLE_COUNT
         || !tableNumbers.containsAll(Set.of(29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42))) {
       throw new IllegalArgumentException(

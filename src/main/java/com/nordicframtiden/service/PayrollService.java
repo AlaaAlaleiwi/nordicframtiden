@@ -214,12 +214,13 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
         : monthlyTaxable.signum() == 0 ? 30
         : oneTimeTaxService.rateFor(year, column,
             projected.setScale(0,RoundingMode.HALF_UP).intValue());
-    BigDecimal oneTimeTax=oneTime.multiply(BigDecimal.valueOf(rate)).divide(BigDecimal.valueOf(100),0,RoundingMode.HALF_UP);
+    // One-time tax follows the official tables' convention: whole kronor, öre discarded.
+    BigDecimal oneTimeTax=oneTime.multiply(BigDecimal.valueOf(rate)).divide(BigDecimal.valueOf(100),0,RoundingMode.DOWN);
     BigDecimal tax=BigDecimal.valueOf(regularTaxInt).add(oneTimeTax);
     BigDecimal taxableGross=monthlyTaxable.add(oneTime);
     BigDecimal net=taxableGross.subtract(tax).add(taxFree);
     var lines=items.stream().map(a->new NetSalaryResponse.AdjustmentLine(a.getId(),a.getName(),a.getAmount(),a.getTaxTreatment(),a.getReimbursementType(),a.getQuantity(),a.getReceiptReference(),a.isTaxFreeEligibilityConfirmed(),adjustmentService.taxFreePortion(a))).toList();
-    return new NetSalaryResponse(userId,String.format("%04d-%02d",year,month),hourlyCost,payType,monthlySalary == null ? null : monthlySalary.setScale(2,RoundingMode.HALF_UP),hours.setScale(2,RoundingMode.HALF_UP),taxableGross.setScale(2,RoundingMode.HALF_UP),year,municipality,table,column,tax.setScale(2),net.setScale(2),BigDecimal.valueOf(regularTaxInt).setScale(2),oneTimeTax.setScale(2),taxFree.setScale(2),projected.setScale(2),lines,pay.base().setScale(2,RoundingMode.HALF_UP),pay.saturdayOb().setScale(2,RoundingMode.HALF_UP),pay.sundayOb().setScale(2,RoundingMode.HALF_UP));
+    return new NetSalaryResponse(userId,String.format("%04d-%02d",year,month),hourlyCost,payType,monthlySalary == null ? null : monthlySalary.setScale(2,RoundingMode.HALF_UP),hours.setScale(2,RoundingMode.HALF_UP),taxableGross.setScale(2,RoundingMode.HALF_UP),year,municipality,table,column,tax.setScale(2,RoundingMode.HALF_UP),net.setScale(2,RoundingMode.HALF_UP),BigDecimal.valueOf(regularTaxInt).setScale(2),oneTimeTax.setScale(2),taxFree.setScale(2,RoundingMode.HALF_UP),projected.setScale(2,RoundingMode.HALF_UP),lines,pay.base().setScale(2,RoundingMode.HALF_UP),pay.saturdayOb().setScale(2,RoundingMode.HALF_UP),pay.sundayOb().setScale(2,RoundingMode.HALF_UP));
   }
 
 

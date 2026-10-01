@@ -4,6 +4,11 @@ from pathlib import Path
 
 import re
 
+# DEPRECATED: this script still targets the pre-V26 tax_table_row schema
+# (days_count / col_7), which no longer exists. Use the automatic Skatteverket
+# importer (SkatteverketTaxTableImporter) or convert_tax_tables_csv_to_sql.py,
+# which writes the percentage flag required by the current schema.
+
 def to_int(v: str) -> int:
     if v is None:
         return 0

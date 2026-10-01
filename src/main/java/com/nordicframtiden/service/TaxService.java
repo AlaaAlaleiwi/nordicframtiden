@@ -59,8 +59,20 @@ public class TaxService {
       case 6 -> row.getCol6();
       default -> throw new IllegalArgumentException("Invalid tax column " + taxColumn);
     };
-    return Boolean.TRUE.equals(row.getPercentage())
-        ? (int) Math.round(grossSalaryInt * tableValue / 100.0)
-        : tableValue;
+    if (Boolean.TRUE.equals(row.getPercentage())) {
+      // Percentage tables: the stored value is a percentage of the gross salary
+      // and the withholding is rounded down to whole kronor.
+      return (int) ((long) grossSalaryInt * tableValue / 100);
+    }
+    if (row.getIncomeFrom() != null
+        && row.getIncomeFrom() > TaxTableRow.MONTHLY_KRONOR_INCOME_LIMIT) {
+      // Kronor rows never exist above 80 000 kr per month. A high-income row
+      // without the percentage flag carries a raw percentage (e.g. 45) that
+      // would otherwise be paid out as 45 kronor instead of ~45 percent.
+      throw new IllegalStateException("Corrupt tax table row for year " + row.getTaxYear()
+          + " table " + row.getTableNumber() + " income " + row.getIncomeFrom()
+          + ": high-income rows must be percentage rows");
+    }
+    return tableValue;
   }
 }

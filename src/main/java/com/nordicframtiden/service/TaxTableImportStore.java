@@ -10,6 +10,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nordicframtiden.service.model.TaxTableRow;
+
 @Service
 public class TaxTableImportStore {
   private static final int MINIMUM_COMPLETE_ROW_COUNT = 7_000;
@@ -26,12 +28,25 @@ public class TaxTableImportStore {
   }
 
   public boolean hasCompleteYear(int year) {
-    Long rowCount = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM tax_table_row WHERE tax_year = ?", Long.class, year);
-    Long percentageRowCount = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM tax_table_row WHERE tax_year = ? AND percentage", Long.class, year);
-    return rowCount != null && rowCount >= MINIMUM_COMPLETE_ROW_COUNT
-        && percentageRowCount != null && percentageRowCount > 0;
+    // A year is only usable when every table is complete and coherent:
+    //  - enough rows and all 14 tables (29-42) are present,
+    //  - each table ends in exactly one open-ended percentage row,
+    //  - no row above 80 000 kr is stored as a kronor row. Rows like that were
+    //    seeded by tools that predate the percentage column and would pay raw
+    //    percentages (e.g. 45) out as kronor instead of ~45 percent.
+    return Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+        SELECT (SELECT COUNT(*) FROM tax_table_row WHERE tax_year = ?) >= ?
+          AND (SELECT COUNT(*) FROM tax_table_row
+                WHERE tax_year = ? AND NOT percentage AND income_from > ?) = 0
+          AND (SELECT COUNT(*) FROM (
+                 SELECT table_number FROM tax_table_row WHERE tax_year = ?
+                 GROUP BY table_number
+                 HAVING COUNT(*) FILTER (WHERE percentage AND income_to = 2147483647) = 1
+               ) complete_tables) = ?
+        """, Boolean.class,
+        year, MINIMUM_COMPLETE_ROW_COUNT,
+        year, TaxTableRow.MONTHLY_KRONOR_INCOME_LIMIT,
+        year, SkatteverketTaxTableImporter.EXPECTED_TABLE_COUNT));
   }
 
   public boolean hasCompleteOneTimeYear(int year) {

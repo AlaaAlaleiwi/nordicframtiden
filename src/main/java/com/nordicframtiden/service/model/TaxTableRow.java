@@ -11,6 +11,13 @@ public class TaxTableRow {
   @Serial
   private static final long serialVersionUID = 1L;
 
+  /**
+   * Skatteverket's monthly tables are expressed in kronor up to 80 000 kr per
+   * month; every row above this income is a percentage row. See the official
+   * file description for "allmänna tabeller" (månadslön).
+   */
+  public static final int MONTHLY_KRONOR_INCOME_LIMIT = 80_000;
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;

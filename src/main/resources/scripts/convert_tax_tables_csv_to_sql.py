@@ -11,7 +11,16 @@ Usage:
 
 CSV expected columns (adjust mapping below if your headers differ):
   tax_year, table_number, income_from, income_to, col_1..col_6
+
+Above 80 000 kr per month Skatteverket's monthly tables are percentage
+tables; the generated SQL marks those rows with percentage = TRUE so the
+tax engine multiplies the stored value by the salary instead of paying it
+out as kronor.
 """
+
+# Skatteverket's monthly tables switch from kronor to percentages above this
+# monthly income. Must match TaxTableRow.MONTHLY_KRONOR_INCOME_LIMIT.
+KRONOR_INCOME_LIMIT = 80_000
 
 def esc(s: str) -> str:
     return s.replace("'", "''")
@@ -47,7 +56,7 @@ def main():
     # Batch insert
     sql_lines.append(
         "INSERT INTO tax_table_row "
-        "(tax_year, table_number, income_from, income_to, col_1, col_2, col_3, col_4, col_5, col_6) VALUES"
+        "(tax_year, table_number, income_from, income_to, col_1, col_2, col_3, col_4, col_5, col_6, percentage) VALUES"
     )
 
     values = []
@@ -59,7 +68,8 @@ def main():
         c1 = int(r[k_c1]); c2 = int(r[k_c2]); c3 = int(r[k_c3])
         c4 = int(r[k_c4]); c5 = int(r[k_c5]); c6 = int(r[k_c6])
 
-        values.append(f"({y},{table},{inc_from},{inc_to},{c1},{c2},{c3},{c4},{c5},{c6})")
+        percentage = "TRUE" if inc_from > KRONOR_INCOME_LIMIT else "FALSE"
+        values.append(f"({y},{table},{inc_from},{inc_to},{c1},{c2},{c3},{c4},{c5},{c6},{percentage})")
 
     sql_lines.append(",\n".join(values) + ";")
     sql_lines.append("COMMIT;")
