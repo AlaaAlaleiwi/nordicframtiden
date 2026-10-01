@@ -217,6 +217,46 @@ class ScheduleWizardServiceTest {
     verify(emailService, never()).sendSchedulePdfEmail(anyString(), anyString(), any(), any(), any(), any());
   }
 
+  @Test
+  void confirmUsesPerAssignmentTimesWhenProvided() throws Exception {
+    when(scheduleService.create(eq(5L), eq(11L), any(), any(), any()))
+        .thenAnswer(invocation -> createdShift(sara, invocation.getArgument(2), invocation.getArgument(3)));
+    when(scheduleService.create(eq(5L), eq(12L), any(), any(), any()))
+        .thenAnswer(invocation -> createdShift(ali, invocation.getArgument(2), invocation.getArgument(3)));
+
+    var result = wizard.confirm("WEEK", LocalDate.of(2026, 10, 14), 5L,
+        List.of(
+            // Sara Monday 12 Oct with custom hours 08:00-12:00.
+            new ScheduleWizardService.Assignment(LocalDate.of(2026, 10, 12), 11L,
+                java.time.LocalTime.of(8, 0), java.time.LocalTime.of(12, 0)),
+            // Ali Tuesday 13 Oct falls back to the default 09:00-17:00.
+            new ScheduleWizardService.Assignment(LocalDate.of(2026, 10, 13), 12L)),
+        true);
+
+    assertEquals(2, result.createdCount());
+    verify(scheduleService).create(eq(5L), eq(11L),
+        eq(LocalDate.of(2026, 10, 12).atTime(java.time.LocalTime.of(8, 0))
+            .atZone(java.time.ZoneId.of("Europe/Stockholm")).toOffsetDateTime()),
+        eq(LocalDate.of(2026, 10, 12).atTime(java.time.LocalTime.of(12, 0))
+            .atZone(java.time.ZoneId.of("Europe/Stockholm")).toOffsetDateTime()),
+        any());
+    verify(scheduleService).create(eq(5L), eq(12L),
+        eq(LocalDate.of(2026, 10, 13).atTime(java.time.LocalTime.of(9, 0))
+            .atZone(java.time.ZoneId.of("Europe/Stockholm")).toOffsetDateTime()),
+        eq(LocalDate.of(2026, 10, 13).atTime(java.time.LocalTime.of(17, 0))
+            .atZone(java.time.ZoneId.of("Europe/Stockholm")).toOffsetDateTime()),
+        any());
+  }
+
+  @Test
+  void confirmRejectsInvertedTimes() {
+    assertThrows(IllegalArgumentException.class,
+        () -> wizard.confirm("DAY", LocalDate.of(2026, 10, 14), 5L,
+            List.of(new ScheduleWizardService.Assignment(LocalDate.of(2026, 10, 14), 11L,
+                java.time.LocalTime.of(17, 0), java.time.LocalTime.of(9, 0))),
+            true));
+  }
+
   private AppUser user(Long id, String username) {
     AppUser user = new AppUser();
     user.setId(id);

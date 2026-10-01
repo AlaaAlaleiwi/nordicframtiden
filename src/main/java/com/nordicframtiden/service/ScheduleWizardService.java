@@ -115,8 +115,17 @@ public class ScheduleWizardService {
       String pdfBase64, List<Long> notifiedUserIds, boolean emailSent) {
   }
 
-  /** One day × pharmacist row of the confirm request. */
-  public record Assignment(LocalDate date, Long pharmacistId) {
+  /**
+   * One day × pharmacist row of the confirm request. Times are optional:
+   * null falls back to the default 09:00-17:00 window.
+   */
+  public record Assignment(LocalDate date, Long pharmacistId,
+      LocalTime startTime, LocalTime endTime) {
+
+    /** Convenience for callers using the default 09:00-17:00 window. */
+    public Assignment(LocalDate date, Long pharmacistId) {
+      this(date, pharmacistId, null, null);
+    }
   }
 
   /* ===================== Option step ===================== */
@@ -197,6 +206,9 @@ public class ScheduleWizardService {
 
     Map<Long, AppUser> pharmacists = new LinkedHashMap<>();
     for (Assignment assignment : assignments) {
+      if (assignment.date() == null || assignment.pharmacistId() == null) {
+        throw new IllegalArgumentException("Every assignment needs a date and a pharmacist");
+      }
       AppUser user = userRepo.findById(assignment.pharmacistId())
           .orElseThrow(() -> new IllegalArgumentException(
               "Pharmacist " + assignment.pharmacistId() + " not found"));
@@ -212,8 +224,16 @@ public class ScheduleWizardService {
 
     List<ScheduleShift> created = new ArrayList<>();
     for (Assignment assignment : assignments) {
-      OffsetDateTime shiftStart = assignment.date().atTime(defaultStartTime()).atZone(STOCKHOLM).toOffsetDateTime();
-      OffsetDateTime shiftEnd = assignment.date().atTime(defaultEndTime()).atZone(STOCKHOLM).toOffsetDateTime();
+      LocalTime from = assignment.startTime() != null
+          ? assignment.startTime() : defaultStartTime();
+      LocalTime to = assignment.endTime() != null
+          ? assignment.endTime() : defaultEndTime();
+      if (!from.isBefore(to)) {
+        throw new IllegalArgumentException(
+            "Shift start must be before end on " + assignment.date());
+      }
+      OffsetDateTime shiftStart = assignment.date().atTime(from).atZone(STOCKHOLM).toOffsetDateTime();
+      OffsetDateTime shiftEnd = assignment.date().atTime(to).atZone(STOCKHOLM).toOffsetDateTime();
       try {
         created.add(scheduleService.create(pharmacyId, assignment.pharmacistId(),
             shiftStart, shiftEnd, null));
