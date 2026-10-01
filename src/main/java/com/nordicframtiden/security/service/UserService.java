@@ -117,6 +117,8 @@ public class UserService {
       String email,
       String phone,
       BigDecimal hourlyCost,
+      String payType,
+      BigDecimal monthlySalary,
       Integer yearOfBirth,
       String countyCode,
       String municipalityCode,
@@ -135,6 +137,8 @@ public class UserService {
       String email,
       String phone,
       BigDecimal hourlyCost,
+      String payType,
+      BigDecimal monthlySalary,
       Integer yearOfBirth,
       String countyCode,
       String municipalityCode,
@@ -154,6 +158,13 @@ public class UserService {
   }
 
   // ---------- Validation helpers ----------
+
+  /** HOURLY (default) or MONTHLY; null/blank/unknown falls back to HOURLY. */
+  private static String normalizePayType(String payType) {
+    return payType != null && payType.trim().equalsIgnoreCase("MONTHLY")
+        ? "MONTHLY"
+        : "HOURLY";
+  }
 
   private static void validateYear(Integer yearOfBirth) {
     if (yearOfBirth == null) throw new IllegalArgumentException("yearOfBirth is required");
@@ -199,6 +210,8 @@ public class UserService {
         profile != null ? profile.getEmail() : null,
         profile != null ? profile.getPhone() : null,
         profile != null ? profile.getHourlyCost() : null,
+        profile != null ? profile.getPayType() : null,
+        profile != null ? profile.getMonthlySalary() : null,
         profile != null ? profile.getYearOfBirth() : null,
         profile != null ? profile.getCountyCode() : null,
         profile != null ? profile.getMunicipalityCode() : null,
@@ -221,12 +234,15 @@ public class UserService {
               profile != null ? profile.getEmail() : null,
               profile != null ? profile.getPhone() : null,
               profile != null ? profile.getHourlyCost() : null,
-              profile != null ? profile.getYearOfBirth() : null,          profile != null ? profile.getCountyCode() : null,
-          profile != null ? profile.getMunicipalityCode() : null,
-          photoId(u),
-          safePerms(u.getPermissions()),
-          u.getRoles() != null && u.getRoles().contains(Role.ADMIN),
-        deletionPolicy == null ? null : deletionPolicy.infoFor(u.getId())
+              profile != null ? profile.getPayType() : null,
+              profile != null ? profile.getMonthlySalary() : null,
+              profile != null ? profile.getYearOfBirth() : null,
+              profile != null ? profile.getCountyCode() : null,
+              profile != null ? profile.getMunicipalityCode() : null,
+              photoId(u),
+              safePerms(u.getPermissions()),
+              u.getRoles() != null && u.getRoles().contains(Role.ADMIN),
+              deletionPolicy == null ? null : deletionPolicy.infoFor(u.getId())
       );
         })
         .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -243,6 +259,8 @@ public class UserService {
           p != null ? p.getEmail() : null,
           p != null ? p.getPhone() : null,
           p != null ? p.getHourlyCost() : null,
+          p != null ? p.getPayType() : null,
+          p != null ? p.getMonthlySalary() : null,
           p != null ? p.getYearOfBirth() : null,
           p != null ? p.getCountyCode() : null,
           p != null ? p.getMunicipalityCode() : null,
@@ -266,6 +284,8 @@ public class UserService {
       String email,
       String phone,
       BigDecimal hourlyCost,
+      String payType,
+      BigDecimal monthlySalary,
       Integer yearOfBirth,
       String countyCode,
       String municipalityCode,
@@ -306,6 +326,9 @@ public class UserService {
     p.setEmail(email.trim());
     p.setPhone(phone.trim());
     p.setHourlyCost(hourlyCost);
+    p.setPayType(normalizePayType(payType));
+    p.setMonthlySalary(
+        "MONTHLY".equals(p.getPayType()) ? monthlySalary : null);
 
     p.setYearOfBirth(yearOfBirth);
     p.setCountyCode(countyCode.trim());
@@ -322,6 +345,8 @@ public class UserService {
         p.getEmail(),
         p.getPhone(),
         p.getHourlyCost(),
+        p.getPayType(),
+        p.getMonthlySalary(),
         p.getYearOfBirth(),
         p.getCountyCode(),
         p.getMunicipalityCode(),
@@ -344,6 +369,8 @@ public class UserService {
       String phone,
       Boolean enabled,
       BigDecimal hourlyCost,
+      String payType,
+      BigDecimal monthlySalary,
       Integer yearOfBirth,
       String countyCode,
       String municipalityCode,
@@ -370,6 +397,23 @@ public class UserService {
     }
 
     if (hourlyCost != null) p.setHourlyCost(hourlyCost);
+
+    // Pay type: switchable on update. MONTHLY requires a salary amount;
+    // switching back to HOURLY clears the stored monthly salary.
+    if (payType != null) {
+      p.setPayType(normalizePayType(payType));
+      if ("MONTHLY".equals(p.getPayType())) {
+        BigDecimal nextSalary = monthlySalary != null ? monthlySalary : p.getMonthlySalary();
+        if (nextSalary == null || nextSalary.signum() < 0) {
+          throw new IllegalArgumentException("monthlySalary is required for MONTHLY pay type");
+        }
+        p.setMonthlySalary(nextSalary);
+      } else {
+        p.setMonthlySalary(null);
+      }
+    } else if (monthlySalary != null && "MONTHLY".equals(p.getPayType())) {
+      p.setMonthlySalary(monthlySalary);
+    }
 
     if (yearOfBirth != null) {
       validateYear(yearOfBirth);
@@ -405,6 +449,8 @@ public class UserService {
         p.getEmail(),
         p.getPhone(),
         p.getHourlyCost(),
+        p.getPayType(),
+        p.getMonthlySalary(),
         p.getYearOfBirth(),
         p.getCountyCode(),
         p.getMunicipalityCode(),
@@ -435,6 +481,8 @@ public class UserService {
         fullName,
         email,
         phone,
+        null,
+        null,
         null,
         null,
         yearOfBirth,
@@ -529,6 +577,8 @@ public class UserService {
         p != null ? p.getEmail() : null,
         p != null ? p.getPhone() : null,
         p != null ? p.getHourlyCost() : null,
+        p != null ? p.getPayType() : null,
+        p != null ? p.getMonthlySalary() : null,
         p != null ? p.getYearOfBirth() : null,
         p != null ? p.getCountyCode() : null,
         p != null ? p.getMunicipalityCode() : null,

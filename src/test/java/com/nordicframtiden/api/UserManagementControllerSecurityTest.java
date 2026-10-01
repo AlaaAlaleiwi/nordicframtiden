@@ -86,7 +86,7 @@ class UserManagementControllerSecurityTest {
             "alice", "Alice", "alice@example.com", "0700000000", 1990, "01", "0180"))
             .thenReturn(new UserService.UserRow(
                 7L, "alice", true, "Alice", "alice@example.com", "0700000000",
-                null, 1990, "01", "0180", null, Set.of(), null, false, null));
+                null, null, null, 1990, "01", "0180", null, Set.of(), null, false, null));
 
         mvc.perform(put("/api/users/me").with(csrf())
                 .contentType("application/json")

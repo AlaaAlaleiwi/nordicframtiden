@@ -24,6 +24,113 @@ import static org.mockito.Mockito.when;
 class PayrollServiceTest {
 
   @Test
+  void monthlyEmployeeGetsFixedGrossRegardlessOfShifts() {
+    UserService userService = mock(UserService.class);
+    TaxService taxService = mock(TaxService.class);
+    ScheduleService scheduleService = mock(ScheduleService.class);
+    StaffScheduleService staffScheduleService = mock(StaffScheduleService.class);
+    SalaryAdjustmentService adjustmentService = mock(SalaryAdjustmentService.class);
+    OneTimeTaxService oneTimeTaxService = mock(OneTimeTaxService.class);
+    PayrollService payrollService = new PayrollService(
+        userService, taxService, scheduleService, staffScheduleService, adjustmentService, oneTimeTaxService);
+
+    UserProfile profile = new UserProfile();
+    profile.setPayType("MONTHLY");
+    profile.setMonthlySalary(BigDecimal.valueOf(28000));
+    profile.setYearOfBirth(1990);
+    profile.setMunicipalityCode("0180");
+    when(userService.getProfileByUserId(7L)).thenReturn(profile);
+
+    // Two shifts (16 h) must NOT add shift pay — the gross stays the salary.
+    ScheduleShift monday = new ScheduleShift();
+    monday.setStartAt(OffsetDateTime.parse("2026-08-03T08:00:00Z"));
+    monday.setEndAt(OffsetDateTime.parse("2026-08-03T16:00:00Z"));
+    ScheduleShift tuesday = new ScheduleShift();
+    tuesday.setStartAt(OffsetDateTime.parse("2026-08-04T08:00:00Z"));
+    tuesday.setEndAt(OffsetDateTime.parse("2026-08-04T16:00:00Z"));
+    when(scheduleService.listForUser(eq(7L), any(), any()))
+        .thenReturn(List.of(monday, tuesday));
+    when(adjustmentService.forMonth(7L, 2026, 8)).thenReturn(List.of());
+    when(adjustmentService.annualOneTimeTotal(7L, 2026)).thenReturn(BigDecimal.ZERO);
+    when(taxService.resolveTaxColumn(1990, 2026)).thenReturn(1);
+    when(taxService.resolveTableNumber("0180", 2026)).thenReturn(30);
+    when(taxService.lookupPreliminaryTax(2026, 30, 1, 28000)).thenReturn(43);
+
+    var payslip = payrollService.netSalaryForUserMonth(7L, 2026, 8);
+
+    assertEquals("MONTHLY", payslip.payType());
+    assertEquals(new BigDecimal("28000.00"), payslip.monthlySalary());
+    assertEquals(new BigDecimal("16.00"), payslip.totalHours()); // hours stay informational
+    assertEquals(new BigDecimal("28000.00"), payslip.grossSalary());
+    assertEquals(new BigDecimal("0.00"), payslip.saturdayOb());
+    assertEquals(new BigDecimal("0.00"), payslip.sundayOb());
+  }
+
+  @Test
+  void monthlyEmployeeWithNoShiftsStillGetsTheirSalary() {
+    UserService userService = mock(UserService.class);
+    TaxService taxService = mock(TaxService.class);
+    ScheduleService scheduleService = mock(ScheduleService.class);
+    StaffScheduleService staffScheduleService = mock(StaffScheduleService.class);
+    SalaryAdjustmentService adjustmentService = mock(SalaryAdjustmentService.class);
+    OneTimeTaxService oneTimeTaxService = mock(OneTimeTaxService.class);
+    PayrollService payrollService = new PayrollService(
+        userService, taxService, scheduleService, staffScheduleService, adjustmentService, oneTimeTaxService);
+
+    UserProfile profile = new UserProfile();
+    profile.setPayType("MONTHLY");
+    profile.setMonthlySalary(BigDecimal.valueOf(28000));
+    profile.setYearOfBirth(1990);
+    profile.setMunicipalityCode("0180");
+    when(userService.getProfileByUserId(7L)).thenReturn(profile);
+    when(scheduleService.listForUser(eq(7L), any(), any())).thenReturn(List.of());
+    when(adjustmentService.forMonth(7L, 2026, 8)).thenReturn(List.of());
+    when(adjustmentService.annualOneTimeTotal(7L, 2026)).thenReturn(BigDecimal.ZERO);
+    when(taxService.resolveTaxColumn(1990, 2026)).thenReturn(1);
+    when(taxService.resolveTableNumber("0180", 2026)).thenReturn(30);
+    when(taxService.lookupPreliminaryTax(2026, 30, 1, 28000)).thenReturn(43);
+
+    var payslip = payrollService.netSalaryForUserMonth(7L, 2026, 8);
+
+    assertEquals(new BigDecimal("0.00"), payslip.totalHours());
+    assertEquals(new BigDecimal("28000.00"), payslip.grossSalary());
+    assertEquals(new BigDecimal("43.00"), payslip.preliminaryTax());
+  }
+
+  @Test
+  void monthlyPreviewUsesSalaryOverrideWithoutPersisting() {
+    UserService userService = mock(UserService.class);
+    TaxService taxService = mock(TaxService.class);
+    ScheduleService scheduleService = mock(ScheduleService.class);
+    StaffScheduleService staffScheduleService = mock(StaffScheduleService.class);
+    SalaryAdjustmentService adjustmentService = mock(SalaryAdjustmentService.class);
+    OneTimeTaxService oneTimeTaxService = mock(OneTimeTaxService.class);
+    PayrollService payrollService = new PayrollService(
+        userService, taxService, scheduleService, staffScheduleService, adjustmentService, oneTimeTaxService);
+
+    UserProfile profile = new UserProfile();
+    profile.setPayType("MONTHLY");
+    profile.setMonthlySalary(BigDecimal.valueOf(28000)); // saved value must NOT be used
+    profile.setYearOfBirth(1990);
+    profile.setMunicipalityCode("0180");
+    when(userService.getProfileByUserId(7L)).thenReturn(profile);
+    when(scheduleService.listForUser(eq(7L), any(), any())).thenReturn(List.of());
+    when(taxService.resolveTaxColumn(1990, 2026)).thenReturn(1);
+    when(taxService.resolveTableNumber("0180", 2026)).thenReturn(30);
+    when(taxService.lookupPreliminaryTax(2026, 30, 1, 30000)).thenReturn(43);
+    when(adjustmentService.toEntities(List.of())).thenReturn(List.of());
+    when(adjustmentService.annualOneTimeTotalExcludingMonth(7L, 2026, 8)).thenReturn(BigDecimal.ZERO);
+
+    // The hourlyCost override slot carries the edited monthly salary.
+    var preview = payrollService.previewForUserMonth(7L, 2026, 8, "USER", BigDecimal.valueOf(30000), List.of());
+
+    assertEquals("MONTHLY", preview.payType());
+    assertEquals(new BigDecimal("30000.00"), preview.monthlySalary());
+    assertEquals(new BigDecimal("30000.00"), preview.grossSalary());
+    verify(adjustmentService, never()).replace(eq(7L), eq(2026), eq(8), any());
+  }
+
+  @Test
   void monthWithoutShiftsReturnsZeroWithoutLookingUpTaxForZeroIncome() {
     UserService userService = mock(UserService.class);
     TaxService taxService = mock(TaxService.class);

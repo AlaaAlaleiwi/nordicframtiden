@@ -4,6 +4,8 @@ import com.nordicframtiden.company.StaffShift;
 import com.nordicframtiden.company.StaffShiftRepository;
 import com.nordicframtiden.pharmacy.ScheduleShift;
 import com.nordicframtiden.pharmacy.ScheduleShiftRepository;
+import com.nordicframtiden.security.model.Role;
+import com.nordicframtiden.security.model.UserProfile;
 import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.service.PayrollService;
@@ -84,6 +86,8 @@ public class SalariesController {
       String fullName,
       double hours,
       BigDecimal hourlyCost,
+      String payType,
+      BigDecimal monthlySalary,
       BigDecimal totalCost
   ) {}
 
@@ -277,7 +281,85 @@ public NetSalaryResponse payslipForStaff(
     if (adjustmentService != null) {
       summaries = withPayslipAdjustments(summaries, lines, start, end, role);
     }
+    // MONTHLY employees: the payslip gross is the fixed salary, not
+    // hours × rate, so their salary entries must not depend on shifts.
+    // Upsert their fixed-salary rows (hours stay informational).
+    summaries = withMonthlySalaries(summaries, role);
     return summaries;
+  }
+
+  /** Pay type of a user's profile: "MONTHLY" or "HOURLY" (default). */
+  private String payTypeOf(Long userId) {
+    return profileRepo.findByUserId(userId)
+        .map(p -> p.getPayType() == null || p.getPayType().isBlank() ? "HOURLY" : p.getPayType())
+        .orElse("HOURLY");
+  }
+
+  /** True when the account holds the given role. */
+  private boolean hasRole(Long userId, com.nordicframtiden.security.model.Role role) {
+    return userRepo.findById(userId)
+        .map(u -> u.getRoles() != null && u.getRoles().contains(role))
+        .orElse(false);
+  }
+
+  /**
+   * Upserts every MONTHLY employee of the role into the summaries with their
+   * fixed salary as cost (skipping those already present — their cost is
+   * corrected to the salary). Keeps salary lists matching the payslips even
+   * in months with no shifts.
+   */
+  private List<PharmacySummary> withMonthlySalaries(List<PharmacySummary> summaries, String role) {
+    boolean staff = "STAFF".equalsIgnoreCase(role);
+    List<UserSummary> monthlyRows = new ArrayList<>();
+    for (UserProfile p : profileRepo.findAll()) {
+      if (p.getUser() == null || p.getMonthlySalary() == null) continue;
+      if (!"MONTHLY".equalsIgnoreCase(p.getPayType())) continue;
+      Long userId = p.getUser().getId();
+      if (!hasRole(userId, staff ? Role.STAFF : Role.USER)) continue;
+      String name = (p.getFullName() != null && !p.getFullName().isBlank())
+          ? p.getFullName() : "user-" + userId;
+      monthlyRows.add(new UserSummary(userId, name, 0, null, "MONTHLY", p.getMonthlySalary(),
+          p.getMonthlySalary()));
+    }
+    if (monthlyRows.isEmpty()) return summaries;
+
+    Map<Long, UserSummary> byId = monthlyRows.stream()
+        .collect(Collectors.toMap(UserSummary::userId, u -> u));
+    Set<Long> present = new HashSet<>();
+    List<PharmacySummary> updated = new ArrayList<>();
+    for (PharmacySummary pharmacy : summaries) {
+      List<UserSummary> users = new ArrayList<>();
+      double totalHours = 0;
+      BigDecimal totalCost = BigDecimal.ZERO;
+      for (UserSummary user : pharmacy.users()) {
+        UserSummary monthly = byId.get(user.userId());
+        if (monthly != null) {
+          // MONTHLY: fixed salary replaces the shift-derived cost; hours stay.
+          UserSummary corrected = new UserSummary(user.userId(), user.fullName(), user.hours(),
+              null, "MONTHLY", monthly.monthlySalary(), monthly.totalCost());
+          users.add(corrected);
+          present.add(user.userId());
+        } else {
+          users.add(user);
+        }
+      }
+      totalHours = users.stream().mapToDouble(UserSummary::hours).sum();
+      totalCost = users.stream().map(UserSummary::totalCost).reduce(BigDecimal.ZERO, BigDecimal::add);
+      updated.add(new PharmacySummary(
+          pharmacy.pharmacyId(), pharmacy.pharmacyName(), totalHours, totalCost, users));
+    }
+    // MONTHLY employees with no shifts at all go into a synthetic group so
+    // they still appear in the salary lists.
+    List<UserSummary> missing = monthlyRows.stream()
+        .filter(u -> !present.contains(u.userId())).toList();
+    if (!missing.isEmpty()) {
+      List<UserSummary> users = new ArrayList<>(missing);
+      BigDecimal totalCost = users.stream().map(UserSummary::totalCost).reduce(BigDecimal.ZERO, BigDecimal::add);
+      PharmacySummary synthetic = new PharmacySummary(0L, "Monthly salaries", 0, totalCost, users);
+      updated.add(synthetic);
+    }
+    updated.sort((a, b) -> b.totalCost().compareTo(a.totalCost()));
+    return updated;
   }
 
   /**
@@ -335,7 +417,8 @@ public NetSalaryResponse payslipForStaff(
         BigDecimal hourly = hours > 0
             ? cost.divide(BigDecimal.valueOf(hours), 2, RoundingMode.HALF_UP)
             : user.hourlyCost();
-        users.add(new UserSummary(user.userId(), user.fullName(), hours, hourly, cost));
+        users.add(new UserSummary(user.userId(), user.fullName(), hours, hourly,
+            user.payType(), user.monthlySalary(), cost));
         totalHours += hours;
         totalCost = totalCost.add(cost);
       }
@@ -343,7 +426,8 @@ public NetSalaryResponse payslipForStaff(
         for (Long userId : adjustmentTotals.keySet()) {
           if (peopleInRole.contains(userId) || !isUserInSalaryRole(userId, role)) continue;
           BigDecimal cost = adjustmentTotals.getOrDefault(userId, BigDecimal.ZERO);
-          users.add(new UserSummary(userId, salaryEmployeeName(userId), 0, BigDecimal.ZERO, cost));
+          users.add(new UserSummary(userId, salaryEmployeeName(userId), 0, BigDecimal.ZERO,
+              payTypeOf(userId), null, cost));
           totalCost = totalCost.add(cost);
         }
       }
@@ -672,7 +756,11 @@ public NetSalaryResponse payslipForStaff(
             ? cost.divide(BigDecimal.valueOf(hours), 2, RoundingMode.HALF_UP)
             : BigDecimal.ZERO;
 
-        users.add(new UserSummary(ue.getKey(), fullName, hours, hourly, cost));
+        var profile = profileRepo.findByUserId(ue.getKey()).orElse(null);
+        users.add(new UserSummary(ue.getKey(), fullName, hours, hourly,
+            profile != null ? profile.getPayType() : null,
+            profile != null ? profile.getMonthlySalary() : null,
+            cost));
 
         totalHours += hours;
         totalCost = totalCost.add(cost);

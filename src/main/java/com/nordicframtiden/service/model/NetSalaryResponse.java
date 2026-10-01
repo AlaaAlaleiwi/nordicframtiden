@@ -7,6 +7,10 @@ public record NetSalaryResponse(
     Long userId,
     String monthKey,           // "2026-02"
     BigDecimal hourlyCost,
+    /** "HOURLY" or "MONTHLY" — how the gross was derived. */
+    String payType,
+    /** Fixed monthly salary; set only when payType is MONTHLY. */
+    BigDecimal monthlySalary,
     BigDecimal totalHours,
     BigDecimal grossSalary,
     Integer taxYear,
@@ -25,7 +29,7 @@ public record NetSalaryResponse(
     BigDecimal sundayOb
 ) {
   public NetSalaryResponse(Long userId,String monthKey,BigDecimal hourlyCost,BigDecimal totalHours,BigDecimal grossSalary,Integer taxYear,String municipalityCode,Integer tableNumber,Integer taxColumn,BigDecimal preliminaryTax,BigDecimal netSalary) {
-    this(userId,monthKey,hourlyCost,totalHours,grossSalary,taxYear,municipalityCode,tableNumber,taxColumn,preliminaryTax,netSalary,preliminaryTax,BigDecimal.ZERO,BigDecimal.ZERO,grossSalary.multiply(BigDecimal.valueOf(12)),List.of(),grossSalary,BigDecimal.ZERO,BigDecimal.ZERO);
+    this(userId,monthKey,hourlyCost,null,null,totalHours,grossSalary,taxYear,municipalityCode,tableNumber,taxColumn,preliminaryTax,netSalary,preliminaryTax,BigDecimal.ZERO,BigDecimal.ZERO,grossSalary.multiply(BigDecimal.valueOf(12)),List.of(),grossSalary,BigDecimal.ZERO,BigDecimal.ZERO);
   }
   public record AdjustmentLine(Long id,String name,BigDecimal amount,SalaryAdjustment.TaxTreatment taxTreatment,
       SalaryAdjustment.ReimbursementType reimbursementType,BigDecimal quantity,String receiptReference,

@@ -59,13 +59,27 @@ public NetSalaryResponse previewForUserMonth(Long userId, int year, int month, S
   var user = userService.getDetailedById(userId);
   var profile = userService.getProfileByUserId(userId);
 
-  if (profile.getHourlyCost() == null) {
-    throw new IllegalArgumentException("Hourly cost missing for user " + userId);
+  BigDecimal rateForCalc = profile.getHourlyCost();
+  BigDecimal monthlySalary = null;
+  if (isMonthly(profile)) {
+    if (profile.getMonthlySalary() == null) {
+      throw new IllegalArgumentException("Monthly salary missing for user " + userId);
+    }
+    // For MONTHLY employees the override carries the edited monthly salary.
+    monthlySalary = profile.getMonthlySalary();
+    if (hourlyCostOverride != null && hourlyCostOverride.signum() >= 0) {
+      monthlySalary = hourlyCostOverride.setScale(2, RoundingMode.HALF_UP);
+    }
+    rateForCalc = monthlySalary;
+  } else {
+    if (profile.getHourlyCost() == null) {
+      throw new IllegalArgumentException("Hourly cost missing for user " + userId);
+    }
+    if (hourlyCostOverride != null && hourlyCostOverride.signum() >= 0) {
+      rateForCalc = hourlyCostOverride.setScale(2, RoundingMode.HALF_UP);
+    }
   }
-  BigDecimal hourlyCost = profile.getHourlyCost();
-  if (hourlyCostOverride != null && hourlyCostOverride.signum() >= 0) {
-    hourlyCost = hourlyCostOverride.setScale(2, RoundingMode.HALF_UP);
-  }
+  BigDecimal hourlyCost = rateForCalc;
 
   int taxYear = year;
   int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
@@ -79,18 +93,23 @@ public NetSalaryResponse previewForUserMonth(Long userId, int year, int month, S
       Instant start = s.getStartAt().toInstant();
       Instant end = s.getEndAt().toInstant();
       totalHours = totalHours.add(hoursBetween(start, end));
-      pay = pay.add(shiftPay(start, end, hourlyCost));
+      if (!isMonthly(profile)) pay = pay.add(shiftPay(start, end, hourlyCost));
     }
   } else {
     for (var s : scheduleService.listForUser(userId, range.start(), range.end())) {
       Instant start = s.getStartAt().toInstant();
       Instant end = s.getEndAt().toInstant();
       totalHours = totalHours.add(hoursBetween(start, end));
-      pay = pay.add(shiftPay(start, end, hourlyCost));
+      if (!isMonthly(profile)) pay = pay.add(shiftPay(start, end, hourlyCost));
     }
   }
+  // MONTHLY: gross is the fixed salary regardless of shift count.
+  if (isMonthly(profile)) {
+    pay = PayBreakdown.fixed(monthlySalary);
+  }
 
-  return calculate(userId, year, month, hourlyCost, totalHours, pay, taxColumn, tableNumber,
+  return calculate(userId, year, month, hourlyCost, profile.getPayType(), monthlySalary,
+      totalHours, pay, taxColumn, tableNumber,
       profile.getMunicipalityCode(), adjustmentOverrides);
 }
 
@@ -98,6 +117,14 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
   // Same logic as netSalaryForUserMonth but ONLY use staffScheduleService shifts
   var user = userService.getDetailedById(userId);
   var profile = userService.getProfileByUserId(userId);
+
+  BigDecimal rate = profile.getHourlyCost();
+  if (isMonthly(profile)) {
+    if (profile.getMonthlySalary() == null) {
+      throw new IllegalArgumentException("Monthly salary missing for user " + userId);
+    }
+    rate = profile.getMonthlySalary();
+  }
 
   var range = monthRangeUTC(year, month);
   var shifts = staffScheduleService.listForUser(userId, range.start(), range.end());
@@ -108,21 +135,30 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     Instant start = s.getStartAt().toInstant();
     Instant end = s.getEndAt().toInstant();
     totalHours = totalHours.add(hoursBetween(start, end));
-    pay = pay.add(shiftPay(start, end, profile.getHourlyCost()));
+    if (!isMonthly(profile)) pay = pay.add(shiftPay(start, end, rate));
+  }
+  if (isMonthly(profile)) {
+    pay = PayBreakdown.fixed(rate);
   }
 
   int taxYear = year;
   int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
   int tableNumber = taxService.resolveTableNumber(profile.getMunicipalityCode(), taxYear);
 
-  return calculate(userId,year,month,profile.getHourlyCost(),totalHours,pay,taxColumn,tableNumber,profile.getMunicipalityCode());
+  return calculate(userId,year,month,rate,isMonthly(profile) ? "MONTHLY" : "HOURLY",isMonthly(profile) ? rate : null,totalHours,pay,taxColumn,tableNumber,profile.getMunicipalityCode());
 }
   public NetSalaryResponse netSalaryForUserMonth(Long userId, int year, int month) {
 
     var user = userService.getDetailedById(userId);
     var profile = userService.getProfileByUserId(userId); // implement helper that returns UserProfile
 
-    if (profile.getHourlyCost() == null) {
+    BigDecimal rate = profile.getHourlyCost();
+    if (isMonthly(profile)) {
+      if (profile.getMonthlySalary() == null) {
+        throw new IllegalArgumentException("Monthly salary missing for user " + userId);
+      }
+      rate = profile.getMonthlySalary();
+    } else if (profile.getHourlyCost() == null) {
       throw new IllegalArgumentException("Hourly cost missing for user " + userId);
     }
 
@@ -135,21 +171,25 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
       Instant start = s.getStartAt().toInstant();
       Instant end = s.getEndAt().toInstant();
       totalHours = totalHours.add(hoursBetween(start, end));
-      pay = pay.add(shiftPay(start, end, profile.getHourlyCost()));
+      if (!isMonthly(profile)) pay = pay.add(shiftPay(start, end, rate));
+    }
+    // MONTHLY: gross is the fixed salary even with zero shifts.
+    if (isMonthly(profile)) {
+      pay = PayBreakdown.fixed(rate);
     }
 
     int taxYear = year;
     int taxColumn = taxService.resolveTaxColumn(profile.getYearOfBirth(), taxYear);
     int tableNumber = taxService.resolveTableNumber(profile.getMunicipalityCode(), taxYear);
 
-    return calculate(userId,year,month,profile.getHourlyCost(),totalHours,pay,taxColumn,tableNumber,profile.getMunicipalityCode());
+    return calculate(userId,year,month,rate,isMonthly(profile) ? "MONTHLY" : "HOURLY",isMonthly(profile) ? rate : null,totalHours,pay,taxColumn,tableNumber,profile.getMunicipalityCode());
   }
 
-  private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,BigDecimal hours,PayBreakdown pay,int column,int table,String municipality){
-    return calculate(userId,year,month,hourlyCost,hours,pay,column,table,municipality,null);
+  private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,String payType,BigDecimal monthlySalary,BigDecimal hours,PayBreakdown pay,int column,int table,String municipality){
+    return calculate(userId,year,month,hourlyCost,payType,monthlySalary,hours,pay,column,table,municipality,null);
   }
 
-  private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,BigDecimal hours,PayBreakdown pay,int column,int table,String municipality,List<SalaryAdjustmentService.AdjustmentInput> adjustmentOverrides){
+  private NetSalaryResponse calculate(Long userId,int year,int month,BigDecimal hourlyCost,String payType,BigDecimal monthlySalary,BigDecimal hours,PayBreakdown pay,int column,int table,String municipality,List<SalaryAdjustmentService.AdjustmentInput> adjustmentOverrides){
     BigDecimal baseGross = pay.total();
     var items=adjustmentOverrides != null
         ? adjustmentService.toEntities(adjustmentOverrides)
@@ -179,9 +219,13 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
     BigDecimal taxableGross=monthlyTaxable.add(oneTime);
     BigDecimal net=taxableGross.subtract(tax).add(taxFree);
     var lines=items.stream().map(a->new NetSalaryResponse.AdjustmentLine(a.getId(),a.getName(),a.getAmount(),a.getTaxTreatment(),a.getReimbursementType(),a.getQuantity(),a.getReceiptReference(),a.isTaxFreeEligibilityConfirmed(),adjustmentService.taxFreePortion(a))).toList();
-    return new NetSalaryResponse(userId,String.format("%04d-%02d",year,month),hourlyCost,hours.setScale(2,RoundingMode.HALF_UP),taxableGross.setScale(2,RoundingMode.HALF_UP),year,municipality,table,column,tax.setScale(2),net.setScale(2),BigDecimal.valueOf(regularTaxInt).setScale(2),oneTimeTax.setScale(2),taxFree.setScale(2),projected.setScale(2),lines,pay.base().setScale(2,RoundingMode.HALF_UP),pay.saturdayOb().setScale(2,RoundingMode.HALF_UP),pay.sundayOb().setScale(2,RoundingMode.HALF_UP));
+    return new NetSalaryResponse(userId,String.format("%04d-%02d",year,month),hourlyCost,payType,monthlySalary == null ? null : monthlySalary.setScale(2,RoundingMode.HALF_UP),hours.setScale(2,RoundingMode.HALF_UP),taxableGross.setScale(2,RoundingMode.HALF_UP),year,municipality,table,column,tax.setScale(2),net.setScale(2),BigDecimal.valueOf(regularTaxInt).setScale(2),oneTimeTax.setScale(2),taxFree.setScale(2),projected.setScale(2),lines,pay.base().setScale(2,RoundingMode.HALF_UP),pay.saturdayOb().setScale(2,RoundingMode.HALF_UP),pay.sundayOb().setScale(2,RoundingMode.HALF_UP));
   }
 
+
+  private boolean isMonthly(com.nordicframtiden.security.model.UserProfile profile) {
+    return "MONTHLY".equalsIgnoreCase(profile.getPayType());
+  }
 
   private record UtcRange(Instant start, Instant end) {}
 
@@ -217,6 +261,8 @@ public NetSalaryResponse netSalaryForStaffMonth(Long userId, int year, int month
 
   private record PayBreakdown(BigDecimal base, BigDecimal saturdayOb, BigDecimal sundayOb) {
     static PayBreakdown zero(){return new PayBreakdown(BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO);}
+    /** MONTHLY employees: the whole gross is the fixed salary (no OB parts). */
+    static PayBreakdown fixed(BigDecimal salary){return new PayBreakdown(salary,BigDecimal.ZERO,BigDecimal.ZERO);}
     BigDecimal total(){return base.add(saturdayOb).add(sundayOb);}
     PayBreakdown add(PayBreakdown other){return new PayBreakdown(base.add(other.base),saturdayOb.add(other.saturdayOb),sundayOb.add(other.sundayOb));}
   }

@@ -189,7 +189,8 @@ public class PayslipFreezeService {
     addLine(lines, label, change.regularGrossDelta(), SalaryAdjustment.TaxTreatment.REGULAR_TAXABLE);
     addLine(lines, label, change.oneTimeGrossDelta(), SalaryAdjustment.TaxTreatment.ONE_TIME_TAXABLE);
     addLine(lines, label, change.taxFreeDelta(), SalaryAdjustment.TaxTreatment.TAX_FREE);
-    NetSalaryResponse corrected = new NetSalaryResponse(old.userId(), old.monthKey(), old.hourlyCost(), old.totalHours(),
+    NetSalaryResponse corrected = new NetSalaryResponse(old.userId(), old.monthKey(), old.hourlyCost(),
+        old.payType(), old.monthlySalary(), old.totalHours(),
         gross, old.taxYear(), old.municipalityCode(), old.tableNumber(), old.taxColumn(), tax, net,
         regularTax, oneTimeTax, taxFree, old.projectedAnnualIncome(), lines, old.baseHourlySalary(), old.saturdayOb(), old.sundayOb());
     return view(revisions.saveAndFlush(new PayslipRevision(s.getId(), previous.getRevision() + 1, actor,

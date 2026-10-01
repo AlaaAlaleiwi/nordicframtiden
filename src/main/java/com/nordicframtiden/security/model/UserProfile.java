@@ -27,6 +27,14 @@ public class UserProfile {
   @Column(name = "hourly_cost", precision = 12, scale = 2)
   private BigDecimal hourlyCost;
 
+  /** HOURLY (default) or MONTHLY — drives how the payslip gross is derived. */
+  @Column(name = "pay_type", nullable = false, length = 10)
+  private String payType = "HOURLY";
+
+  /** Fixed gross monthly salary; used when payType == MONTHLY. */
+  @Column(name = "monthly_salary", precision = 12, scale = 2)
+  private BigDecimal monthlySalary;
+
   // ✅ NEW
   @Column(name = "year_of_birth", nullable = false)
   private Integer yearOfBirth;
@@ -58,6 +66,12 @@ public class UserProfile {
 
   public BigDecimal getHourlyCost() { return hourlyCost; }
   public void setHourlyCost(BigDecimal hourlyCost) { this.hourlyCost = hourlyCost; }
+
+  public String getPayType() { return payType; }
+  public void setPayType(String payType) { this.payType = payType; }
+
+  public BigDecimal getMonthlySalary() { return monthlySalary; }
+  public void setMonthlySalary(BigDecimal monthlySalary) { this.monthlySalary = monthlySalary; }
 
   public Integer getYearOfBirth() { return yearOfBirth; }
   public void setYearOfBirth(Integer yearOfBirth) { this.yearOfBirth = yearOfBirth; }
