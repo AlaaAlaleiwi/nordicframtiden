@@ -105,9 +105,10 @@ public class ScheduleService {
         // One shift per user per day: notify and reject the duplicate.
         assertNoShiftOnSameDay(user.getId(), startAt, endAt, null);
 
-        // ✅ Snapshot the pay rate at creation — but never silently at zero:
-        // a missing profile or rate is a setup error, refuse the booking.
-        BigDecimal hourly = resolveRateOrThrow(user.getId());
+        // Freeze hourly pay for HOURLY employees. MONTHLY employees are still
+        // schedulable, but their payroll comes from the fixed monthly salary,
+        // so their shift must not carry a fabricated hourly rate.
+        BigDecimal hourly = resolveHourlySnapshotOrThrow(user.getId());
 
         ScheduleShift s = new ScheduleShift();
         s.setPharmacy(pharmacy);
@@ -155,7 +156,7 @@ public class ScheduleService {
             // Reassignment: the rate snapshot follows the employee, otherwise
             // salary reporting keeps billing the previous person's rate.
             if (!user.getId().equals(s.getUser().getId())) {
-                s.setHourlyCostSnapshot(resolveRateOrThrow(user.getId()));
+                s.setHourlyCostSnapshot(resolveHourlySnapshotOrThrow(user.getId()));
             }
             s.setUser(user);
         } else if (deletionPolicy != null && (startAt != null)) {
@@ -195,15 +196,27 @@ public class ScheduleService {
     }
 
     /**
-     * Resolves the employee's current pay rate for a fresh snapshot. Missing
-     * profile or missing rate is refused (never silently priced at zero).
+     * Resolves the employee's current shift snapshot. MONTHLY employees have
+     * no hourly rate by design; their fixed salary is calculated separately
+     * by payroll, so their shifts store a null hourly snapshot. HOURLY
+     * employees still require a configured rate.
      */
-    private BigDecimal resolveRateOrThrow(Long userId) {
+    private BigDecimal resolveHourlySnapshotOrThrow(Long userId) {
         try {
             var profile = userService.getProfileByUserId(userId);
-            if (profile == null || profile.getHourlyCost() == null) {
+            if (profile == null) {
+                throw new IllegalArgumentException("Användarens profil saknas.");
+            }
+            if ("MONTHLY".equalsIgnoreCase(profile.getPayType())) {
+                if (profile.getMonthlySalary() == null || profile.getMonthlySalary().signum() < 0) {
+                    throw new IllegalArgumentException(
+                        "Användaren saknar månadslön — ange lönen innan arbetspass bokas.");
+                }
+                return null;
+            }
+            if (profile.getHourlyCost() == null) {
                 throw new IllegalArgumentException(
-                    "Användaren har ingen timkostnad satt — sätt lönen innan arbetpass bokas.");
+                    "Användaren har ingen timkostnad satt — sätt lönen innan arbetspass bokas.");
             }
             return profile.getHourlyCost();
         } catch (IllegalArgumentException e) {

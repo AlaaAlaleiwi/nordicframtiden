@@ -1,6 +1,7 @@
 package com.nordicframtiden.pharmacy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
@@ -25,10 +26,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * Review item 3 + 7: the pay-rate snapshot must follow the employee
- * (reassignment reprices, same-person edits keep the frozen rate), a missing
- * profile/rate must be refused instead of silently priced at zero, and the
- * same-day conflict window must use Stockholm local midnights so it stays
- * correct across DST transitions and covers overnight shifts.
+ * (reassignment reprices, monthly reassignment clears the hourly snapshot,
+ * same-person edits keep the frozen rate), missing profiles and missing
+ * HOURLY rates are refused instead of silently priced at zero, monthly staff
+ * can be scheduled without an hourly rate, and the same-day conflict window
+ * stays correct across DST transitions and overnight shifts.
  */
 @ExtendWith(MockitoExtension.class)
 class ScheduleServiceRateAndWindowTest {
@@ -89,6 +91,61 @@ class ScheduleServiceRateAndWindowTest {
 
         // Mocked entity: assert the snapshot setter saw the new rate.
         verify(s).setHourlyCostSnapshot(new BigDecimal("300"));
+    }
+
+    @Test
+    void reassigningToMonthlyEmployeeClearsTheHourlySnapshotAndSucceeds() {
+        ScheduleShift s = existingShift(42L, 7L, "200");
+        when(shiftRepo.findById(42L)).thenReturn(Optional.of(s));
+        AppUser newcomer = user(8L, "monthly");
+        when(userRepo.findById(8L)).thenReturn(Optional.of(newcomer));
+        UserProfile monthly = profileWithRate(null);
+        monthly.setPayType("MONTHLY");
+        monthly.setMonthlySalary(new BigDecimal("28000"));
+        when(userService.getProfileByUserId(8L)).thenReturn(monthly);
+        when(shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(any(), any(), any()))
+            .thenReturn(List.of());
+        when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.update(42L, null, 8L, null, null, null);
+
+        verify(s).setHourlyCostSnapshot(null);
+    }
+
+    @Test
+    void createAllowsMonthlyEmployeeWithoutHourlyRateAndKeepsNullSnapshot() {
+        AppUser u = user(7L, "monthly");
+        when(userRepo.findById(7L)).thenReturn(Optional.of(u));
+        when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
+        UserProfile monthly = profileWithRate(null);
+        monthly.setPayType("MONTHLY");
+        monthly.setMonthlySalary(new BigDecimal("28000"));
+        when(userService.getProfileByUserId(7L)).thenReturn(monthly);
+        when(shiftRepo.findByUserIdAndStartAtLessThanAndEndAtGreaterThan(any(), any(), any()))
+            .thenReturn(List.of());
+        when(shiftRepo.save(any(ScheduleShift.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ScheduleShift created = service.create(1L, 7L,
+            OffsetDateTime.parse("2027-03-01T09:00:00Z"),
+            OffsetDateTime.parse("2027-03-01T17:00:00Z"), null);
+
+        assertEquals(u, created.getUser());
+        assertNull(created.getHourlyCostSnapshot());
+    }
+
+    @Test
+    void createStillRefusesMonthlyEmployeeWithoutMonthlySalary() {
+        AppUser u = user(7L, "monthly");
+        when(userRepo.findById(7L)).thenReturn(Optional.of(u));
+        when(pharmacyRepo.findById(1L)).thenReturn(Optional.of(new Pharmacy()));
+        UserProfile monthly = profileWithRate(null);
+        monthly.setPayType("MONTHLY");
+        when(userService.getProfileByUserId(7L)).thenReturn(monthly);
+
+        assertThrows(IllegalArgumentException.class, () ->
+            service.create(1L, 7L,
+                OffsetDateTime.parse("2027-03-01T09:00:00Z"),
+                OffsetDateTime.parse("2027-03-01T17:00:00Z"), null));
     }
 
     @Test
