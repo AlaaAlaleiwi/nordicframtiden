@@ -43,8 +43,8 @@ public class TaxService {
         return externalTax.getAsInt();
       }
     } catch (SkatteverketTaxClient.SkatteverketUnavailableException exception) {
-      log.warn("Skatteverket tax API unavailable; using local tax table fallback: {}",
-          exception.getMessage());
+      log.warn("Skatteverket tax API unavailable; using local tax table fallback ({})",
+          exception.getClass().getSimpleName());
     }
 
     TaxTableRow row = taxRepo.findRow(taxYear, tableNumber, grossSalaryInt)

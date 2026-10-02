@@ -92,6 +92,7 @@ public class SkatteverketTaxTableImporter {
 
   private void importMonthlyIfMissing(int requestedYear) {
     if (store.hasCompleteYear(requestedYear)) return;
+    log.info("Checking Skatteverket monthly tax tables for {}", requestedYear);
     try {
       URI fileUri = discoverMonthlyTableUri(requestedYear, download(indexUri));
       List<TaxTableImportRow> rows = parseMonthlyTable(requestedYear, download(fileUri));
@@ -101,12 +102,14 @@ public class SkatteverketTaxTableImporter {
     } catch (TaxTableNotPublishedException exception) {
       log.info("Skatteverket monthly tax tables for {} are not published yet", requestedYear);
     } catch (Exception exception) {
-      log.error("Could not import Skatteverket monthly tax tables for {}", requestedYear, exception);
+      log.error("Could not import Skatteverket monthly tax tables for {} ({})",
+          requestedYear, exception.getClass().getSimpleName());
     }
   }
 
   private void importOneTimeIfMissing(int requestedYear) {
     if (store.hasCompleteOneTimeYear(requestedYear)) return;
+    log.info("Checking Skatteverket one-time tax tables for {}", requestedYear);
     try {
       List<OneTimeTaxImportRow> rows = parseOneTimeTables(requestedYear, download(oneTimeTableUri));
       validateOneTimeRows(rows);
@@ -115,7 +118,8 @@ public class SkatteverketTaxTableImporter {
     } catch (TaxTableNotPublishedException exception) {
       log.info("Skatteverket one-time tax tables for {} are not published yet", requestedYear);
     } catch (Exception exception) {
-      log.error("Could not import Skatteverket one-time tax tables for {}", requestedYear, exception);
+      log.error("Could not import Skatteverket one-time tax tables for {} ({})",
+          requestedYear, exception.getClass().getSimpleName());
     }
   }
 
@@ -128,7 +132,7 @@ public class SkatteverketTaxTableImporter {
         .build();
     HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
     if (response.statusCode() < 200 || response.statusCode() >= 300) {
-      throw new IOException("Skatteverket returned HTTP " + response.statusCode() + " for " + uri);
+      throw new IOException("Skatteverket returned HTTP " + response.statusCode());
     }
     return new String(response.body(), StandardCharsets.UTF_8);
   }
@@ -179,7 +183,7 @@ public class SkatteverketTaxTableImporter {
         rows.add(new TaxTableImportRow(year, tableNumber, incomeFrom, incomeTo,
             columns[0], columns[1], columns[2], columns[3], columns[4], columns[5], percentage));
       } catch (RuntimeException exception) {
-        throw new IllegalArgumentException("Invalid Skatteverket tax-table line: " + rawLine, exception);
+        throw new IllegalArgumentException("Invalid Skatteverket tax-table row", exception);
       }
     }
     return rows;

@@ -258,6 +258,8 @@ public class ScheduleWizardService {
       emailSent = emailSchedule(pharmacists, pdf, periodStart, periodEnd);
     }
 
+    log.info("Schedule wizard created {} shift(s), reported {} conflict(s), and queued notifications for {} recipient(s)",
+        created.size(), dedupe(conflicts).size(), notified.size());
     return new WizardConfirmResult(created.size(), dedupe(conflicts),
         java.util.Base64.getEncoder().encodeToString(pdf), notified, emailSent);
   }
@@ -356,7 +358,8 @@ public class ScheduleWizardService {
             pushSender.send(subscription.getFirebaseInstallationId(), data));
         notified.add(userId);
       } catch (RuntimeException e) {
-        log.warn("Schedule notification could not be queued for user {}", userId);
+        log.warn("Schedule notification could not be queued (user id redacted): {}",
+            e.getClass().getSimpleName());
       }
     }
     return notified;
@@ -376,7 +379,7 @@ public class ScheduleWizardService {
         anySent |= emailService.sendSchedulePdfEmail(email, displayName(user), pdf,
             "Schema", start, end);
       } catch (RuntimeException e) {
-        log.warn("Schedule email failed for user {}: {}", user.getId(), e.getMessage());
+        log.warn("Schedule email failed (user id redacted): {}", e.getClass().getSimpleName());
       }
     }
     return anySent;

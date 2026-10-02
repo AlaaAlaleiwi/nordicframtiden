@@ -1,10 +1,16 @@
 sentry:
   dsn: ${SENTRY_DSN:}
   enabled: ${SENTRY_ENABLED:true}
+  logs:
+    enabled: true
+  logging:
+    enabled: false
+    minimum-level: info
+    minimum-event-level: warn
+    minimum-breadcrumb-level: info
   environment: ${SENTRY_ENVIRONMENT:${SPRING_PROFILES_ACTIVE:development}}
   release: ${SENTRY_RELEASE:}
-  # Avoid automatically attaching usernames or client IP addresses. Do not
-  # capture HTTP bodies or query parameters, which may contain payroll/PII data.
+  # Avoid attaching user identity, request bodies, or query parameters to events.
   data-collection:
     user-info: false
     http-bodies: []
@@ -70,6 +76,8 @@ server:
 logging:
   level:
     org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR
+    # The framework warning includes its generated development password verbatim.
+    org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration: ERROR
 
 spring:
   mail:

@@ -30,10 +30,9 @@ public class ContactNotificationService {
         try {
             doSendNewContactRequestNotification(request);
         } catch (Exception e) {
-            // Async: nobody is waiting on this. Logging is the safety net.
+            // Async: nobody is waiting on this. Avoid logging message text, recipient, or stack details.
             org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ContactNotificationService.class);
-            log.error("Notification email for contact request {} could not be sent",
-                request == null ? null : request.getId(), e);
+            log.error("Contact notification email could not be sent: {}", e.getClass().getSimpleName());
         }
     }
 
@@ -43,8 +42,7 @@ public class ContactNotificationService {
             doSendAdminReplyNotification(request, adminNote);
         } catch (Exception e) {
             org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ContactNotificationService.class);
-            log.error("Reply email for contact request {} could not be sent",
-                request == null ? null : request.getId(), e);
+            log.error("Contact reply email could not be sent: {}", e.getClass().getSimpleName());
         }
     }
 

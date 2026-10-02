@@ -59,14 +59,14 @@ public class ApnsSender {
         if (response.statusCode() == 410 || response.statusCode() == 400 && response.body().contains("BadDeviceToken")) {
           tokens.deleteById(device.getId());
         } else if (response.statusCode() >= 300) {
-          log.warn("APNs rejected notification with status {}: {}", response.statusCode(), response.body());
+          log.warn("APNs rejected notification with status {} (provider response redacted)", response.statusCode());
         }
       }).exceptionally(error -> {
-        log.warn("APNs notification could not be delivered", error);
+        log.warn("APNs notification could not be delivered: {}", error.getClass().getSimpleName());
         return null;
       });
     } catch (Exception error) {
-      log.warn("APNs notification could not be queued", error);
+      log.warn("APNs notification could not be queued: {}", error.getClass().getSimpleName());
     }
   }
 

@@ -72,7 +72,7 @@ public class GdprExportMailJob {
       boolean sent = emailService.sendGdprExportEmail(request.getEmail(), displayName, json);
       if (!sent) {
         // Mail disabled or unconfigured: leave PENDING for the next run.
-        log.warn("GDPR export for user {}: mail not sent (disabled or unconfigured)", request.getUserId());
+        log.warn("GDPR export mail was not sent (disabled or unconfigured; user id redacted)");
         return false;
       }
       request.setStatus(GdprExportRequest.STATUS_SENT);
@@ -81,13 +81,14 @@ public class GdprExportMailJob {
       return true;
     } catch (Exception e) {
       request.setAttempts(request.getAttempts() + 1);
-      String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-      request.setLastError(message.length() > 1000 ? message.substring(0, 1000) : message);
+      // Persist only a safe diagnostic category; exception text can include PII or credentials.
+      request.setLastError(e.getClass().getSimpleName());
       if (request.getAttempts() >= MAX_ATTEMPTS) {
         request.setStatus(GdprExportRequest.STATUS_FAILED);
       }
       requests.save(request);
-      log.error("GDPR export delivery failed for user {}: {}", request.getUserId(), message);
+      log.error("GDPR export delivery failed (user id redacted; failure detail sanitized): {}",
+          e.getClass().getSimpleName());
       return false;
     }
   }

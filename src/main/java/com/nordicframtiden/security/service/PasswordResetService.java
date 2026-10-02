@@ -78,7 +78,7 @@ public class PasswordResetService {
     try {
       emailService.sendPasswordResetLink(email.trim(), user.getUsername(), rawToken, TOKEN_TTL_MINUTES);
     } catch (RuntimeException e) {
-      log.error("Could not send password reset email to {}: {}", email.trim(), e.toString());
+      log.error("Could not send password reset email (recipient redacted): {}", e.getClass().getSimpleName());
       tokenRepo.deleteByUserId(user.getId());
       return false;
     }
@@ -154,8 +154,8 @@ public class PasswordResetService {
         emailService.sendPasswordResetConfirmation(email, user.getUsername());
       }
     } catch (RuntimeException e) {
-      log.error("Password changed for user {} but the confirmation email could not be sent: {}",
-          user.getUsername(), e.toString());
+      log.error("Password changed but the confirmation email could not be sent: {}",
+          e.getClass().getSimpleName());
     }
   }
 

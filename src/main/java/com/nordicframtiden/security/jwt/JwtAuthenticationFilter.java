@@ -69,7 +69,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     } catch (Exception e) {
       SecurityContextHolder.clearContext();
-      log.debug("Bearer token rejected for {} {}", request.getMethod(), request.getRequestURI());
+      log.warn("Bearer authentication rejected for {} {}", request.getMethod(), request.getRequestURI());
     }
 
     chain.doFilter(request, response);

@@ -44,11 +44,13 @@ public class FirebaseChatPushSender implements ChatPushSender {
           log.debug("Firebase chat notification completed");
         }
         @Override public void onFailure(Throwable error) {
-          log.warn("Firebase chat notification could not be delivered");
+          log.warn("Firebase chat notification could not be delivered: {}",
+              error.getClass().getSimpleName());
         }
       }, MoreExecutors.directExecutor());
     } catch (RuntimeException error) {
-      log.warn("Firebase chat notification could not be queued");
+      log.warn("Firebase chat notification could not be queued: {}",
+          error.getClass().getSimpleName());
     }
   }
 }

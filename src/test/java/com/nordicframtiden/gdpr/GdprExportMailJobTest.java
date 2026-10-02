@@ -173,7 +173,7 @@ class GdprExportMailJobTest {
     verify(requests).save(saved.capture());
     assertThat(saved.getValue().getAttempts()).isEqualTo(1);
     assertThat(saved.getValue().getStatus()).isEqualTo(GdprExportRequest.STATUS_PENDING);
-    assertThat(saved.getValue().getLastError()).contains("smtp down");
+    assertThat(saved.getValue().getLastError()).isEqualTo("IllegalStateException");
   }
 
   @Test

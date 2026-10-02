@@ -224,7 +224,7 @@ public class PayslipDeliveryService {
                 userId, request.getWorkYear(), request.getWorkMonth(), request.getRole());
             if (payslip.grossSalary() == null || payslip.grossSalary().compareTo(java.math.BigDecimal.ZERO) == 0) {
                 requests.markSkippedIfSending(request.getId(), "Zero-gross payslip; no email sent");
-                log.info("Payslip delivery for user {}: zero-gross payslip skipped", userId);
+                log.info("Payslip delivery skipped a zero-gross payslip (user id redacted)");
                 return false;
             }
             byte[] pdf = pdfBuilder.build(
@@ -239,7 +239,7 @@ public class PayslipDeliveryService {
                 // Mail disabled or unconfigured: release the claim unpunished so
                 // the next daily run retries once mail is available.
                 requests.releaseClaimIfSending(request.getId());
-                log.warn("Payslip delivery for user {}: mail not sent (disabled or unconfigured)", userId);
+                log.warn("Payslip delivery mail was not sent (disabled or unconfigured; user id redacted)");
                 return false;
             }
 
@@ -250,20 +250,21 @@ public class PayslipDeliveryService {
             // effort); the conditional update means only the claim holder can
             // complete the row.
             if (requests.markSentIfSending(request.getId(), Instant.now(clock)) == 0) {
-                log.warn("Payslip delivery for user {}: claim no longer held after send", userId);
+                log.warn("Payslip delivery claim was not held after send (user id redacted)");
                 return false;
             }
             return true;
         } catch (Exception e) {
-            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            // The DB retains the diagnostic, but do not store user/provider text that could contain PII or credentials.
+            String message = e.getClass().getSimpleName();
             String truncated = message.length() > 1000 ? message.substring(0, 1000) : message;
             request.setAttempts(request.getAttempts() + 1);
             String nextStatus = request.getAttempts() >= MAX_ATTEMPTS
                 ? PayslipDeliveryRequest.STATUS_FAILED
                 : PayslipDeliveryRequest.STATUS_PENDING;
             requests.recordFailureIfSending(request.getId(), truncated, nextStatus, request.getAttempts());
-            log.error("Payslip delivery failed for user {}: {}",
-                request.getUserId(), truncated);
+            log.error("Payslip delivery failed (user id redacted; stored failure detail sanitized): {}",
+                e.getClass().getSimpleName());
             return false;
         }
     }
@@ -293,7 +294,8 @@ public class PayslipDeliveryService {
             subscriptions.forEach(subscription ->
                 pushSender.send(subscription.getFirebaseInstallationId(), data));
         } catch (RuntimeException e) {
-            log.warn("Payslip ready notification could not be queued for user {}", userId);
+            log.warn("Payslip ready notification could not be queued (user id redacted): {}",
+                e.getClass().getSimpleName());
         }
     }
 
@@ -338,7 +340,13 @@ public class PayslipDeliveryService {
         if (email == null) email = request.getEmail();
         // Conditional database update prevents duplicate concurrent resends
         // and avoids overwriting a claim placed by the scheduled worker.
-        return requests.requeueForResend(requestId, email);
+        int requeued = requests.requeueForResend(requestId, email);
+        if (requeued > 0) {
+            log.info("Payslip delivery row requeued for resend (request id redacted)");
+        } else {
+            log.warn("Payslip delivery row could not be requeued for resend (request id redacted)");
+        }
+        return requeued;
     }
 
     /**

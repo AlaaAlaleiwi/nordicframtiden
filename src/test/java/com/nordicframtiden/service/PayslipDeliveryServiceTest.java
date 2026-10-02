@@ -157,7 +157,7 @@ class PayslipDeliveryServiceTest {
         boolean sent = service.deliver(row);
 
         assertThat(sent).isFalse();
-        verify(requests).recordFailureIfSending(eq(100L), argThat(contains("smtp down")),
+        verify(requests).recordFailureIfSending(eq(100L), eq("IllegalStateException"),
             eq(PayslipDeliveryRequest.STATUS_PENDING), eq(1));
         // No push went out and no SENT was recorded.
         verify(pushSender, never()).send(anyString(), any());
@@ -192,7 +192,7 @@ class PayslipDeliveryServiceTest {
 
         service.deliver(row);
 
-        verify(requests).recordFailureIfSending(eq(100L), argThat(contains("smtp down again")),
+        verify(requests).recordFailureIfSending(eq(100L), eq("IllegalStateException"),
             eq(PayslipDeliveryRequest.STATUS_FAILED), eq(PayslipDeliveryService.MAX_ATTEMPTS));
     }
 

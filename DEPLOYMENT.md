@@ -62,6 +62,12 @@ gcloud run deploy nordicframtiden-api \
 
 If Sentry is not configured yet, omit `SENTRY_DSN=sentry-dsn:latest`; the empty default keeps reporting disabled. Create the `sentry-dsn` Secret Manager secret from the DSN in the Sentry project's client keys, and grant the Cloud Run runtime service account access. `SENTRY_ENVIRONMENT` defaults to the active Spring profile or `development`; set `SENTRY_RELEASE` to a build/version identifier when available. Usernames and client IP addresses are not automatically attached. If mail is not configured, omit `MAIL_PASSWORD=mail-password:latest` and supply the non-secret mail settings only when needed. For a private Redis or PostgreSQL endpoint, add the appropriate `--network`, `--subnet`, and `--vpc-egress` options to the deployment.
 
+### Sentry log forwarding
+
+With `SENTRY_DSN` configured, the Logback integration forwards `INFO`, `WARN`, and `ERROR` messages to Sentry Logs. `WARN` and `ERROR` also create Sentry issue events; `INFO` entries are log records only. `DEBUG` messages are not forwarded. Configure Sentry issue alerts under **Monitors → Alerts** for new issues/regressions, and enable phone notifications through email or a supported integration.
+
+Application logging avoids writing raw usernames, email addresses, passwords, reset tokens, bearer credentials, chat/message contents, and payroll details. A Logback filter and Sentry callbacks provide defense-in-depth masking for labeled credential fields, emails, and bearer/JWT token formats; request bodies, query strings, cookies, and HTTP headers are stripped from Sentry events. These filters cannot reliably identify arbitrary personal data in unlabeled/free-form text, so never log raw credentials or user-provided content—log a non-sensitive event description, counts, and exception class instead. Verify all new log statements follow this rule before release.
+
 After Cloud Run reports a successful revision, deploy Firebase Hosting from the frontend repository. The Hosting deployment checks that this service already exists.
 
 ## Audio-call relay

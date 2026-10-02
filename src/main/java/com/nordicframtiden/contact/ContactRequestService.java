@@ -68,8 +68,8 @@ public class ContactRequestService {
     try {
       contactNotificationService.sendNewContactRequestNotification(saved);
     } catch (MailException e) {
-      log.error("Contact request {} was saved, but its notification email could not be sent",
-          saved.getId(), e);
+      log.error("Contact request notification email could not be sent: {}",
+          e.getClass().getSimpleName());
     }
     return saved;
   }
@@ -101,8 +101,8 @@ public class ContactRequestService {
       try {
         contactNotificationService.sendAdminReplyNotification(saved, nextNote);
       } catch (MailException e) {
-        log.error("Contact request {} was updated, but its reply email could not be sent",
-            saved.getId(), e);
+        log.error("Contact request reply email could not be sent: {}",
+            e.getClass().getSimpleName());
       }
     }
 

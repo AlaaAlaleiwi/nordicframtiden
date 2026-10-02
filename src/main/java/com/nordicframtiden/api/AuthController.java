@@ -8,6 +8,8 @@ import com.nordicframtiden.security.repo.AppUserRepository;
 import com.nordicframtiden.security.repo.UserProfileRepository;
 import com.nordicframtiden.admin.model.AdminProfileRepository;
 import com.nordicframtiden.security.service.PasswordResetService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -20,6 +22,8 @@ import java.util.*;
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final AuthenticationManager authManager;
     private final JwtService jwtService;
@@ -56,9 +60,15 @@ public class AuthController {
     // ---------- Endpoints ----------
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest req) {
-        // Authenticate credentials
-        authManager.authenticate(
-                new UsernamePasswordAuthenticationToken(req.username(), req.password()));
+        // Authenticate credentials. Never include the submitted password or username in logs.
+        try {
+            authManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(req.username(), req.password()));
+        } catch (org.springframework.security.core.AuthenticationException exception) {
+            log.warn("Login attempt rejected");
+            throw exception;
+        }
+        log.info("Login succeeded");
         // At this point authentication succeeded – fetch the full user entity
         AppUser user = userRepo.findByUsername(req.username())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -145,9 +155,8 @@ public class AuthController {
         try {
             passwordResetService.requestReset(request.email());
         } catch (RuntimeException e) {
-            // Never leak whether the account exists — but log why the mail failed.
-            org.slf4j.LoggerFactory.getLogger(AuthController.class)
-                .error("Password reset request failed (mail not sent): {}", e.toString());
+            // Keep account details, email addresses and provider error text out of logs.
+            log.error("Password reset request failed (mail not sent): {}", e.getClass().getSimpleName());
         }
         return ResponseEntity.ok(Map.of("message",
             "Om mejladressen är registrerad har ett mejl med återställningslänk skickats."));

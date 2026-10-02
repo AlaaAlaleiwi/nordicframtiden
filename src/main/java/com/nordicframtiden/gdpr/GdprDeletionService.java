@@ -89,7 +89,7 @@ public class GdprDeletionService {
         emailService.sendGdprDeletionReceivedEmail(email, displayName(userId, user.getUsername()));
       }
     } catch (Exception e) {
-      log.warn("Deletion-request notice failed for user {}: {}", userId, e.getMessage());
+      log.warn("Deletion-request notice failed (user id redacted): {}", e.getClass().getSimpleName());
     }
     return saved;
   }
@@ -146,7 +146,7 @@ public class GdprDeletionService {
             scheduledDate);
       }
     } catch (Exception e) {
-      log.warn("Deletion-scheduled notice failed for user {}: {}", request.getUserId(), e.getMessage());
+      log.warn("Deletion-scheduled notice failed (user id redacted): {}", e.getClass().getSimpleName());
     }
     return saved;
   }
@@ -190,12 +190,11 @@ public class GdprDeletionService {
                 request.getUsername() == null ? "user" : request.getUsername());
           }
         } catch (Exception mailFailure) {
-          log.warn("Deletion-completed notice failed for user {}: {}",
-              request.getUserId(), mailFailure.getMessage());
+          log.warn("Deletion-completed notice failed (user id redacted): {}",
+              mailFailure.getClass().getSimpleName());
         }
       } catch (Exception e) {
-        log.error("Scheduled deletion failed for user {}: {}",
-            request.getUserId(), e.getMessage(), e);
+        log.error("Scheduled deletion failed (user id redacted): {}", e.getClass().getSimpleName());
       }
     }
     return executed;
