@@ -1,3 +1,16 @@
+sentry:
+  dsn: ${SENTRY_DSN:}
+  enabled: ${SENTRY_ENABLED:true}
+  environment: ${SENTRY_ENVIRONMENT:${SPRING_PROFILES_ACTIVE:development}}
+  release: ${SENTRY_RELEASE:}
+  # Avoid automatically attaching usernames or client IP addresses. Do not
+  # capture HTTP bodies or query parameters, which may contain payroll/PII data.
+  data-collection:
+    user-info: false
+    http-bodies: []
+    url-query-params:
+      mode: off
+
 app:
   document-key: ${APP_DOCUMENT_KEY:}
   jwt:

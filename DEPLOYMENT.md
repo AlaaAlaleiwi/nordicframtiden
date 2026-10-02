@@ -22,6 +22,10 @@ Required secrets:
 - `database-username`
 - `database-password`
 
+Optional Sentry DSN secret (required to send error events):
+
+- `sentry-dsn`
+
 Optional mail secret:
 
 - `mail-password`
@@ -50,13 +54,13 @@ gcloud run deploy nordicframtiden-api \
   --region europe-north1 \
   --allow-unauthenticated \
   --max-instances 10 \
-  --set-env-vars SPRING_FLYWAY_ENABLED=true,REDIS_HOST=YOUR_REDIS_HOST,REDIS_PORT=6379 \
-  --set-secrets APP_JWT_SECRET=app-jwt-secret:latest,SPRING_DATASOURCE_URL=database-url:latest,SPRING_DATASOURCE_USERNAME=database-username:latest,SPRING_DATASOURCE_PASSWORD=database-password:latest,MAIL_PASSWORD=mail-password:latest
+  --set-env-vars SPRING_FLYWAY_ENABLED=true,REDIS_HOST=YOUR_REDIS_HOST,REDIS_PORT=6379,SENTRY_ENVIRONMENT=production \
+  --set-secrets APP_JWT_SECRET=app-jwt-secret:latest,SPRING_DATASOURCE_URL=database-url:latest,SPRING_DATASOURCE_USERNAME=database-username:latest,SPRING_DATASOURCE_PASSWORD=database-password:latest,SENTRY_DSN=sentry-dsn:latest,MAIL_PASSWORD=mail-password:latest
 ```
 
 `--allow-unauthenticated` is required so Firebase Hosting can forward requests to the service. Spring Security still protects the application endpoints with JWT authorization.
 
-If mail is not configured, omit `MAIL_PASSWORD=mail-password:latest` and supply the non-secret mail settings only when needed. For a private Redis or PostgreSQL endpoint, add the appropriate `--network`, `--subnet`, and `--vpc-egress` options to the deployment.
+If Sentry is not configured yet, omit `SENTRY_DSN=sentry-dsn:latest`; the empty default keeps reporting disabled. Create the `sentry-dsn` Secret Manager secret from the DSN in the Sentry project's client keys, and grant the Cloud Run runtime service account access. `SENTRY_ENVIRONMENT` defaults to the active Spring profile or `development`; set `SENTRY_RELEASE` to a build/version identifier when available. Usernames and client IP addresses are not automatically attached. If mail is not configured, omit `MAIL_PASSWORD=mail-password:latest` and supply the non-secret mail settings only when needed. For a private Redis or PostgreSQL endpoint, add the appropriate `--network`, `--subnet`, and `--vpc-egress` options to the deployment.
 
 After Cloud Run reports a successful revision, deploy Firebase Hosting from the frontend repository. The Hosting deployment checks that this service already exists.
 

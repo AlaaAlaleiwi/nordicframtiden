@@ -1,5 +1,6 @@
 package com.nordicframtiden.api;
 
+import io.sentry.Sentry;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
@@ -47,6 +48,8 @@ public class ApiExceptionHandler {
   // clients never see them disguised as other status codes.
   @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
   public ResponseEntity<?> handleDataIntegrity(org.springframework.dao.DataIntegrityViolationException ex) {
+    // Spring considers this exception handled, so explicitly forward unexpected 500s.
+    Sentry.captureException(ex);
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
         .body(Map.of("error", "Database constraint violation"));
   }
